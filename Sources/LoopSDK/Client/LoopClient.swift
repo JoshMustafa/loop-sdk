@@ -143,6 +143,32 @@ public actor LoopClient {
         try await executeNoContent(request)
     }
 
+    /// Fire-and-forget POST of a pre-serialized analytics event batch to
+    /// `/api/ingest/track` (expects `202 {"accepted": N}`; the body is
+    /// discarded). Throws on transport failure or non-2xx so the retention
+    /// engine can decide between retry (5xx/offline) and drop (4xx).
+    public func sendTrackBatch(body: Data) async throws {
+        var request = try LoopEndpoint.trackEvents.buildRequest(
+            baseURL: baseURL,
+            apiKey: apiKey,
+            reporterId: reporterId
+        )
+        request.httpBody = body
+        try await executeNoContent(request)
+    }
+
+    /// Fire-and-forget POST of funnel declarations to
+    /// `/api/ingest/funnels` (idempotent server-side upsert, expects 202).
+    public func sendFunnels(body: Data) async throws {
+        var request = try LoopEndpoint.defineFunnels.buildRequest(
+            baseURL: baseURL,
+            apiKey: apiKey,
+            reporterId: reporterId
+        )
+        request.httpBody = body
+        try await executeNoContent(request)
+    }
+
     // MARK: - Internal
 
     private func send<T: Decodable & Sendable>(
