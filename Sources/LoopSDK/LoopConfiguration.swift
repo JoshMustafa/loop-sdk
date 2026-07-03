@@ -38,16 +38,25 @@ public struct LoopConfiguration: Sendable {
     public let apiBase: URL
     public let tierProvider: TierProvider?
 
+    /// Master switch for the product-analytics ("Retention") subsystem.
+    /// When `false`, `LoopSDK.track` / `identify` / `resetIdentity` /
+    /// `defineFunnel` and the automatic `app_opened` / `session_start`
+    /// events are all no-ops — nothing is buffered and nothing is sent.
+    /// Defaults to `true`.
+    public let analyticsEnabled: Bool
+
     /// Default initialiser — uses the built-in auto-detector
     /// (RevenueCat via Obj-C runtime; falls back to nil when nothing
     /// recognises the host's subscription source).
     public init(
         apiKey: String,
-        apiBase: URL = LoopConfiguration.defaultBaseURL
+        apiBase: URL = LoopConfiguration.defaultBaseURL,
+        analyticsEnabled: Bool = true
     ) {
         self.apiKey = apiKey
         self.apiBase = apiBase
         self.tierProvider = { AutoTier.resolve() }
+        self.analyticsEnabled = analyticsEnabled
     }
 
     /// Override initialiser — host supplies its own closure (e.g. a
@@ -56,11 +65,13 @@ public struct LoopConfiguration: Sendable {
     public init(
         apiKey: String,
         apiBase: URL = LoopConfiguration.defaultBaseURL,
-        tierProvider: TierProvider?
+        tierProvider: TierProvider?,
+        analyticsEnabled: Bool = true
     ) {
         self.apiKey = apiKey
         self.apiBase = apiBase
         self.tierProvider = tierProvider
+        self.analyticsEnabled = analyticsEnabled
     }
 
     /// Runs the configured `tierProvider` (if any), trims, and treats

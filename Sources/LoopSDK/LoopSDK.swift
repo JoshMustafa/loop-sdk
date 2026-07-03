@@ -91,6 +91,65 @@ public enum LoopSDK {
         )
     }
 
+    // MARK: - Product analytics (Retention)
+
+    /// Records a product-analytics event.
+    ///
+    /// Fire-and-forget and non-blocking: the event is enveloped
+    /// (occurredAt, sessionId, userId), buffered on disk, and batched to
+    /// the backend (20 events, 15 s, or app-background — whichever comes
+    /// first). No-ops before `start()` or when
+    /// `LoopConfiguration.analyticsEnabled` is `false`.
+    ///
+    /// - Parameters:
+    ///   - name: Event name — lowercase snake_case, ≤64 chars. Names are
+    ///     sanitized ("Set Logged" → `set_logged`); events whose name can't
+    ///     be salvaged are dropped.
+    ///   - props: Optional scalar properties (String/Int/Double/Bool only,
+    ///     ≤16 keys, strings truncated to 256 chars; everything else is
+    ///     dropped).
+    public static func track(_ name: String, _ props: [String: Any]? = nil) {
+        Runtime.shared.track(name, props)
+    }
+
+    /// Associates the anonymous reporter id with the host app's own user
+    /// id. Attached to all subsequent events (persisted across launches)
+    /// until `resetIdentity()`.
+    public static func identify(_ userId: String) {
+        Runtime.shared.identify(userId)
+    }
+
+    /// Clears the identity set by `identify(_:)` — call on sign-out.
+    public static func resetIdentity() {
+        Runtime.shared.resetIdentity()
+    }
+
+    /// Declares a funnel the dashboard should compute. Safe to call on
+    /// every launch: declarations are sent once per app run and upserted
+    /// idempotently server-side (keyed by `key`).
+    ///
+    /// - Parameters:
+    ///   - key: Stable identifier for the funnel.
+    ///   - name: Human-readable name shown on the dashboard.
+    ///   - steps: Ordered event names that make up the funnel.
+    ///   - windowDays: Completion window in days (default 7).
+    ///   - activation: Mark this as the product's activation funnel.
+    public static func defineFunnel(
+        key: String,
+        name: String,
+        steps: [String],
+        windowDays: Int = 7,
+        activation: Bool = false
+    ) {
+        Runtime.shared.defineFunnel(FunnelDefinition(
+            key: key,
+            name: name,
+            steps: steps,
+            windowDays: windowDays,
+            activation: activation
+        ))
+    }
+
     #if canImport(UIKit)
     /// UIKit convenience: presents `LoopReporterView` modally from the
     /// supplied view controller.
@@ -122,6 +181,16 @@ public enum LoopSDK {
         /// Lazily built once configuration is available; rebuilt is
         /// unnecessary because apiKey/base don't change after start().
         private var diagnosticsEngine: DiagnosticsEngine?
+
+        /// Product-analytics buffer — its own store, fully separate from
+        /// the diagnostics buffer (analytics events never mix with
+        /// bug-report breadcrumbs).
+        private let retentionStore = RetentionEventStore.makeDefault()
+        private var retentionEngine: RetentionEngine?
+        #if canImport(UIKit) && os(iOS)
+        /// Keeps the lifecycle → auto-event subscriptions alive.
+        private var retentionLifecycle: RetentionLifecycleObserver?
+        #endif
         private(set) lazy var sessionId: String = {
             let raw = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
             return "sess_" + String(raw.prefix(12))
@@ -132,6 +201,10 @@ public enum LoopSDK {
             lock.lock()
             self.configuration = configuration
             lock.unlock()
+            // Built eagerly (not lazily like diagnostics) because the auto
+            // events need to observe the app lifecycle from launch, before
+            // the host ever calls track().
+            startRetentionIfEnabled()
         }
 
         // MARK: - Diagnostics
@@ -165,6 +238,63 @@ public enum LoopSDK {
         /// Returns the engine, building it on first use, but only if the host
         /// has called `start()`. Returns `nil` (rather than fatal-ing like
         /// `currentConfiguration()`) so diagnostics stay non-fatal.
+        // MARK: - Retention (product analytics)
+
+        /// Builds the retention engine + lifecycle observer once, at
+        /// `configure` time — auto events must observe the app lifecycle
+        /// from launch, before the host ever calls `track()`.
+        func startRetentionIfEnabled() {
+            lock.lock()
+            defer { lock.unlock() }
+            guard let configuration, configuration.analyticsEnabled, retentionEngine == nil else {
+                return
+            }
+
+            let client = LoopClient(
+                baseURL: configuration.apiBase,
+                apiKey: configuration.apiKey,
+                reporterId: reporterId
+            )
+            let engine = RetentionEngine(
+                client: client,
+                store: retentionStore,
+                persistence: RetentionPersistence()
+            )
+            retentionEngine = engine
+            #if canImport(UIKit) && os(iOS)
+            retentionLifecycle = RetentionLifecycleObserver(engine: engine)
+            #endif
+        }
+
+        func track(_ name: String, _ props: [String: Any]?) {
+            guard let engine = retentionEngineIfStarted() else { return }
+            let occurredAt = Date()
+            let sanitized = RetentionSanitizer.sanitizeProps(props)
+            Task.detached {
+                await engine.track(name: name, props: sanitized, occurredAt: occurredAt)
+            }
+        }
+
+        func identify(_ userId: String) {
+            guard let engine = retentionEngineIfStarted() else { return }
+            Task.detached { await engine.identify(userId) }
+        }
+
+        func resetIdentity() {
+            guard let engine = retentionEngineIfStarted() else { return }
+            Task.detached { await engine.resetIdentity() }
+        }
+
+        func defineFunnel(_ funnel: FunnelDefinition) {
+            guard let engine = retentionEngineIfStarted() else { return }
+            Task.detached { await engine.defineFunnel(funnel) }
+        }
+
+        private func retentionEngineIfStarted() -> RetentionEngine? {
+            lock.lock(); defer { lock.unlock() }
+            return retentionEngine
+        }
+
         private func diagnosticsEngineIfConfigured() -> DiagnosticsEngine? {
             lock.lock(); defer { lock.unlock() }
             guard let configuration else { return nil }

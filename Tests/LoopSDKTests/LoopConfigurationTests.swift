@@ -47,4 +47,14 @@ final class LoopConfigurationTests: XCTestCase {
         let config = LoopConfiguration(apiKey: "loop_pk_test", tierProvider: nil)
         XCTAssertNil(config.tierProvider)
     }
+
+    func test_analyticsEnabled_defaults_to_true() {
+        XCTAssertTrue(LoopConfiguration(apiKey: "loop_pk_test").analyticsEnabled)
+        XCTAssertTrue(LoopConfiguration(apiKey: "loop_pk_test", tierProvider: nil).analyticsEnabled)
+    }
+
+    func test_analyticsEnabled_can_be_disabled() {
+        let config = LoopConfiguration(apiKey: "loop_pk_test", analyticsEnabled: false)
+        XCTAssertFalse(config.analyticsEnabled)
+    }
 }
