@@ -69,10 +69,12 @@ public struct LoopReporterView: View {
                         composeRequest = ComposeRequest(kind: next)
                     }
                 },
-                // Always passed: `collect_email` is not exposed to the SDK, so
-                // the backend's 202-for-opted-out response is what makes this a
-                // no-op for a project that has not opted in.
-                onSubmitEmail: LoopEmailPrompt.handler(client: model.client)
+                // Nil unless this project has `collect_email` on, which keeps
+                // the promise that the decision ships with the developer's
+                // project settings and never with an SDK bump. Nil while the
+                // project blob is still loading too — an unknown flag is not
+                // permission to ask for an address.
+                onSubmitEmail: LoopEmailPrompt.handler(client: model.client, project: model.project)
             )
             .preferredColorScheme(.dark)
         }

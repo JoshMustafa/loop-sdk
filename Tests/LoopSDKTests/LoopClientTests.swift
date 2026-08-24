@@ -26,6 +26,33 @@ final class LoopClientTests: XCTestCase {
         XCTAssertEqual(capturedReporter, reporterId)
     }
 
+    /// The SDK gates its post-submit email prompt on this flag, so it has to
+    /// survive the round trip. `collect_email` defaults to false on the backend
+    /// so a routine SDK bump can never start collecting PII; the SDK cannot
+    /// honour that unless it can read the flag.
+    func test_decodes_the_email_capture_opt_in() async throws {
+        let body = ##"{"id":"pebble","name":"Pebble","icon":"🪨","accent":"#3a2a1f","version":"v1.0","collectEmail":true}"##
+        let session = MockURLProtocol.install { _ in (.with(status: 200), Data(body.utf8)) }
+
+        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
+
+        let project = try await client.fetchProject()
+        XCTAssertTrue(project.collectEmail)
+    }
+
+    /// A newer SDK against a backend that predates the flag. Absent must mean
+    /// "not opted in", never a decode failure — that would take the whole
+    /// project blob, and with it the branded UI, down with it.
+    func test_a_project_blob_without_the_flag_is_treated_as_opted_out() async throws {
+        let body = ##"{"id":"pebble","name":"Pebble","icon":"🪨","accent":"#3a2a1f","version":"v1.0"}"##
+        let session = MockURLProtocol.install { _ in (.with(status: 200), Data(body.utf8)) }
+
+        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
+
+        let project = try await client.fetchProject()
+        XCTAssertFalse(project.collectEmail)
+    }
+
     func test_decodes_paged_items() async throws {
         let json = """
         {

@@ -8,10 +8,11 @@ struct LoopSubmittedView: View {
     let onSeeBoard: () -> Void
     let onFileAnother: () -> Void
 
-    /// Nil when the host has not opted into email capture — the screen then
-    /// looks exactly as it did before this feature existed. Declared `var` and
-    /// last so the memberwise initialiser defaults it to nil and the existing
-    /// construction sites keep compiling unchanged.
+    /// Nil unless the project has `collect_email` on — the screen then looks
+    /// exactly as it did before this feature existed, which is what the default
+    /// configuration gets. Declared `var` and last so the memberwise initialiser
+    /// defaults it to nil and the existing construction sites keep compiling
+    /// unchanged.
     var onSubmitEmail: ((String) async -> Bool)?
 
     @Environment(\.dismiss) private var dismiss

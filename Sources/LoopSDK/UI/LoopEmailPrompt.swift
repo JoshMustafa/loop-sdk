@@ -38,17 +38,33 @@ struct LoopEmailPrompt {
         return parts[1].contains(".") && !parts[1].hasPrefix(".") && !parts[1].hasSuffix(".")
     }
 
-    /// Builds the `onSubmit` handler to hand `LoopSubmittedView`.
+    /// Builds the `onSubmit` handler to hand `LoopSubmittedView`, **or nil** when
+    /// this project does not collect email — in which case no prompt is shown.
     ///
-    /// Every error becomes `false`. The report is already filed and safe by the
-    /// time this runs, so a failed capture must never surface as a failed
-    /// report — the prompt just offers to try again.
+    /// The gate is the whole contract. `collect_email` defaults to false so that
+    /// a routine SDK bump can never start collecting PII: the decision ships
+    /// with the developer's project settings, not with a version number. Nil for
+    /// `project == nil` too — metadata that has not loaded, or whose fetch
+    /// failed, is not permission to ask someone for their address.
+    ///
+    /// Gating client-side is not belt-and-braces over a backend check. The
+    /// backend deliberately answers 202 for an opted-out project while storing
+    /// nothing and sending nothing, so a caller holding a key extracted from an
+    /// app binary cannot enumerate which projects collect email. An ungated
+    /// prompt reads that 202 as success and tells the reporter "Check your inbox
+    /// to confirm." about mail that is never coming.
     ///
     /// Defined once here rather than inlined at each construction site: there
     /// are two of them (`LoopReporterView` and `LoopComposerView`), and this is
     /// the type that defines the closure's contract.
-    static func handler(client: LoopClient) -> (String) async -> Bool {
-        { email in
+    ///
+    /// Every error becomes `false`. The report is already filed and safe by the
+    /// time this runs, so a failed capture must never surface as a failed
+    /// report — the prompt just offers to try again.
+    static func handler(client: LoopClient, project: LoopProject?) -> ((String) async -> Bool)? {
+        guard project?.collectEmail == true else { return nil }
+
+        return { email in
             do {
                 try await client.submitContact(email: email)
                 return true
