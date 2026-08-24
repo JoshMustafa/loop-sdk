@@ -68,7 +68,11 @@ public struct LoopReporterView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                         composeRequest = ComposeRequest(kind: next)
                     }
-                }
+                },
+                // Always passed: `collect_email` is not exposed to the SDK, so
+                // the backend's 202-for-opted-out response is what makes this a
+                // no-op for a project that has not opted in.
+                onSubmitEmail: LoopEmailPrompt.handler(client: model.client)
             )
             .preferredColorScheme(.dark)
         }

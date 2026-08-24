@@ -8,6 +8,12 @@ struct LoopSubmittedView: View {
     let onSeeBoard: () -> Void
     let onFileAnother: () -> Void
 
+    /// Nil when the host has not opted into email capture — the screen then
+    /// looks exactly as it did before this feature existed. Declared `var` and
+    /// last so the memberwise initialiser defaults it to nil and the existing
+    /// construction sites keep compiling unchanged.
+    var onSubmitEmail: ((String) async -> Bool)?
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
     private var dark: Bool { scheme == .dark }
@@ -53,6 +59,12 @@ struct LoopSubmittedView: View {
                         .padding(.top, 4)
                 }
                 .padding(.horizontal, 32)
+
+                if let onSubmitEmail {
+                    LoopEmailPrompt(onSubmit: onSubmitEmail)
+                        .padding(.horizontal, 32)
+                        .padding(.top, 8)
+                }
 
                 Spacer(minLength: 0)
 

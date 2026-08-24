@@ -37,6 +37,26 @@ struct LoopEmailPrompt {
         guard parts.count == 2, !parts[0].isEmpty else { return false }
         return parts[1].contains(".") && !parts[1].hasPrefix(".") && !parts[1].hasSuffix(".")
     }
+
+    /// Builds the `onSubmit` handler to hand `LoopSubmittedView`.
+    ///
+    /// Every error becomes `false`. The report is already filed and safe by the
+    /// time this runs, so a failed capture must never surface as a failed
+    /// report — the prompt just offers to try again.
+    ///
+    /// Defined once here rather than inlined at each construction site: there
+    /// are two of them (`LoopReporterView` and `LoopComposerView`), and this is
+    /// the type that defines the closure's contract.
+    static func handler(client: LoopClient) -> (String) async -> Bool {
+        { email in
+            do {
+                try await client.submitContact(email: email)
+                return true
+            } catch {
+                return false
+            }
+        }
+    }
 }
 
 #if os(iOS)

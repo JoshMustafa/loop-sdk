@@ -54,7 +54,11 @@ public struct LoopComposerView: View {
                 // Both exits return to the host — there is no board to fall
                 // back to in this entry point.
                 onSeeBoard: { submittedId = nil; dismiss() },
-                onFileAnother: { submittedId = nil; dismiss() }
+                onFileAnother: { submittedId = nil; dismiss() },
+                // Always passed: `collect_email` is not exposed to the SDK, so
+                // the backend's 202-for-opted-out response is what makes this a
+                // no-op for a project that has not opted in.
+                onSubmitEmail: LoopEmailPrompt.handler(client: model.client)
             )
             .preferredColorScheme(.dark)
         }
