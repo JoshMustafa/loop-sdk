@@ -169,6 +169,27 @@ public actor LoopClient {
         try await executeNoContent(request)
     }
 
+    /// Attaches an optional email address to this device's anonymous reporter id.
+    ///
+    /// Deliberately separate from `submit(payload:)`: the prompt appears AFTER a
+    /// report is filed, so the report path stays frictionless and a rejected
+    /// address never costs someone their bug report.
+    ///
+    /// The SDK does not keep the address. It posts it and forgets it — Keychain
+    /// holds only the anonymous reporter id, as it always has.
+    public func submitContact(email: String) async throws {
+        struct ContactPayload: Encodable { let email: String }
+
+        var request = try LoopEndpoint.submitContact.buildRequest(
+            baseURL: baseURL,
+            apiKey: apiKey,
+            reporterId: reporterId
+        )
+
+        request.httpBody = try JSONEncoder().encode(ContactPayload(email: email))
+        try await executeNoContent(request)
+    }
+
     // MARK: - Internal
 
     private func send<T: Decodable & Sendable>(

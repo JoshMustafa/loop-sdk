@@ -12,11 +12,13 @@ enum LoopEndpoint: Sendable {
     case captureEvent
     case trackEvents
     case defineFunnels
+    case submitContact
 
     var method: String {
         switch self {
         case .getProject, .listBugs, .listFeatures, .getItem: return "GET"
-        case .vote, .postReply, .submit, .captureEvent, .trackEvents, .defineFunnels: return "POST"
+        case .vote, .postReply, .submit, .captureEvent, .trackEvents, .defineFunnels, .submitContact:
+            return "POST"
         }
     }
 
@@ -60,6 +62,7 @@ enum LoopEndpoint: Sendable {
         case .captureEvent: return "/api/ingest/events"
         case .trackEvents: return "/api/ingest/track"
         case .defineFunnels: return "/api/ingest/funnels"
+        case .submitContact: return "/api/ingest/contact"
         }
     }
 }

@@ -190,6 +190,43 @@ final class LoopClientTests: XCTestCase {
         let item = try JSONDecoder.iso().decode(LoopItem.self, from: Data(json.utf8))
         XCTAssertEqual(item.status, .other("frozen"))
     }
+
+    func test_submitContact_posts_the_address_to_the_contact_endpoint() async throws {
+        var capturedPath: String?
+        var capturedMethod: String?
+        var capturedBody: Data?
+
+        let session = MockURLProtocol.install { req in
+            capturedPath = req.url?.path
+            capturedMethod = req.httpMethod
+            capturedBody = req.httpBodyStreamData()
+            return (.with(status: 202), Data())
+        }
+
+        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
+        try await client.submitContact(email: "reporter@example.com")
+
+        XCTAssertEqual(capturedMethod, "POST")
+        XCTAssertEqual(capturedPath, "/api/ingest/contact")
+
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: try XCTUnwrap(capturedBody)) as? [String: Any]
+        )
+        XCTAssertEqual(json["email"] as? String, "reporter@example.com")
+    }
+
+    func test_submitContact_throws_when_the_address_is_rejected() async throws {
+        let session = MockURLProtocol.install { _ in (.with(status: 422), Data()) }
+        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
+
+        do {
+            try await client.submitContact(email: "nope")
+            XCTFail("expected a throw on 422")
+        } catch {
+            // The caller turns this into "that didn't send" — a rejected address
+            // must never surface as a failed report.
+        }
+    }
 }
 
 private extension JSONDecoder {
