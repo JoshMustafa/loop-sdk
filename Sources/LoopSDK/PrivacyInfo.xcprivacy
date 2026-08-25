@@ -7,7 +7,27 @@
   <key>NSPrivacyTrackingDomains</key>
   <array/>
   <key>NSPrivacyCollectedDataTypes</key>
-  <array/>
+  <array>
+    <dict>
+      <!-- Linked: the address is stored against the reporter id, which is what
+           linking means. NOT tracking: it is never used for cross-app or
+           cross-developer identification, and NSPrivacyTracking stays false.
+
+           Apple's optional-feedback-form exemption does NOT apply here. That
+           exemption requires the user's account name to be displayed, and Loop
+           reporters are anonymous by design. -->
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeEmailAddress</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+      </array>
+    </dict>
+  </array>
   <key>NSPrivacyAccessedAPITypes</key>
   <array>
     <dict>
