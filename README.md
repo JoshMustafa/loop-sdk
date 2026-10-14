@@ -19,7 +19,7 @@ Native SwiftUI on iOS (no WebView), survives offline, anonymous by default. Conf
 | **LoopCore** | API key, ids, networking, device info. Every module depends on it. | ✅ | planned | (inside each plugin) |
 | **LoopFeedback** | Bug & feature reporter UI: lists, votes, replies, new reports, optional email | ✅ | later | later |
 | **LoopDiagnostics** | Breadcrumbs and captured problems | ✅ | later | later |
-| **LoopAnalytics** | Events, user id, user properties, sessions | next release | planned | planned |
+| **LoopAnalytics** | Events, user id, user properties, sessions | ✅ | planned | planned |
 
 Modules never depend on each other, so an app that only wants feedback doesn't ship analytics, and vice versa.
 
@@ -27,7 +27,7 @@ Modules never depend on each other, so an app that only wants feedback doesn't s
 
 Available from release `2.0.0` (the first release with the module split).
 
-**Swift Package Manager.** Add `https://github.com/JoshMustafa/loop-sdk` (from `2.0.0`) and tick the products you need (`LoopCore` plus `LoopFeedback` and/or `LoopDiagnostics`).
+**Swift Package Manager.** Add `https://github.com/JoshMustafa/loop-sdk` (from `2.0.0`) and tick the products you need (`LoopCore` plus any of `LoopFeedback`, `LoopDiagnostics` and `LoopAnalytics`).
 
 **CocoaPods.** Installed straight from GitHub. Add the modules you use, plus `LoopCore`:
 
@@ -35,6 +35,7 @@ Available from release `2.0.0` (the first release with the module split).
 pod 'LoopCore',        :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => '2.0.0'
 pod 'LoopFeedback',    :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => '2.0.0'
 pod 'LoopDiagnostics', :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => '2.0.0'
+pod 'LoopAnalytics',   :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => '2.0.0'
 ```
 
 Requires iOS 16+.
@@ -65,6 +66,43 @@ LoopDiagnostics.capture("sync_failed", severity: .error, context: ["code": "504"
 
 `LoopDiagnostics` calls made before `Loop.configure` are safe: breadcrumbs are kept and captures are dropped. Presenting `LoopFeedbackView` before `Loop.configure` stops with a clear error, so a missing key shows up during integration rather than as silent failures.
 
+### Analytics
+
+```swift
+import LoopCore
+import LoopAnalytics
+
+Loop.configure(apiKey: "loop_pk_…")
+LoopAnalytics.start()                                   // optional; defaults are used otherwise
+LoopAnalytics.track("Item Viewed", ["Index": 1])
+LoopAnalytics.setUserId("12345")                        // nil when signed out
+LoopAnalytics.setUserProperties(["Plan": "annual"])    // nil value removes a property
+LoopAnalytics.setPurchaserId(revenueCatAppUserID)
+```
+
+Every call returns at once, runs in the order it was made and never throws into the app. Also available: `await LoopAnalytics.flush()`, `await LoopAnalytics.reset()` (new device id, no user id, user properties or purchaser id, new session), `LoopAnalytics.setOptOut(_:)`, and the read-only `LoopAnalytics.deviceId` and `LoopAnalytics.sessionId`.
+
+`LoopAnalyticsOptions` (all optional):
+
+| Option | Default | Meaning |
+|---|---|---|
+| `flushQueueSize` | `30` | Upload as soon as this many events are queued |
+| `flushInterval` | `30` s | Upload queued events at least this often |
+| `minTimeBetweenSessions` | `300` s | Idle time after which a new session starts |
+| `maxQueueSize` | `1000` | Most events kept on disk; when full, the oldest 20 are dropped |
+| `maxBatchSize` | `100` | Most events sent in one request |
+| `legacyDeviceId` | `nil` | A device id to adopt on first run, so anonymous users from a previous analytics SDK carry over |
+
+How it behaves:
+
+- Events are queued on disk and uploaded in gzip batches of up to 100. An upload happens at 30 queued events, every 30 s, when the app goes to the background or returns to the foreground, at startup, and when opting back in.
+- A full queue (1000) drops the oldest 20 events.
+- A `401`/`403` keeps the events and retries hourly.
+- A session ends after 5 minutes idle; there is no timeout while the app is in the foreground.
+- `setOptOut(true)` drops new events and stops uploads; events already queued are kept and uploaded after opting back in.
+- Calls made before `Loop.configure` are dropped. Options passed to `start` before then are kept and applied once configured. Calling `Loop.configure` a second time logs a warning, and analytics keeps the key it started with.
+- Safe to link into app extensions. Inside an extension the app is treated as always in the foreground and no background task is used.
+
 ### Tagging reports with the user's subscription tier
 
 Every report and diagnostic can carry an optional `user.tier` string that the dashboard shows as a pill (`Paid` / `Trial` / `Free`, or any custom value such as `pro`).
@@ -90,14 +128,14 @@ The package was renamed from `LoopSDK` to `Loop` and split into modules.
 
 | Before | Now |
 |---|---|
-| package `LoopSDK`, `import LoopSDK` | package `Loop`; `import LoopCore` + `LoopFeedback` and/or `LoopDiagnostics` |
+| package `LoopSDK`, `import LoopSDK` | package `Loop`; `import LoopCore` + `LoopFeedback`, `LoopDiagnostics` and/or `LoopAnalytics` |
 | `LoopSDK.start(apiKey:)` / `start(configuration:)` | `Loop.configure(apiKey:options:)` |
 | `LoopConfiguration` | `LoopOptions` |
 | `apiBase:` | `LoopOptions(serverUrl:)` (default `https://loop-analytics-api.fly.dev`) |
 | `LoopSDK.presentReporter(from:)` / `LoopReporterView()` | `LoopFeedback.present(from:)` / `LoopFeedbackView()` |
 | `LoopSDK.currentReporterId()` | `Loop.reporterId` |
 | `LoopSDK.breadcrumb` / `captureDiagnostic` | `LoopDiagnostics.breadcrumb` / `capture` |
-| `LoopSDK.track` / `identify` / `resetIdentity` | Removed. Use `LoopAnalytics` (next release). |
+| `LoopSDK.track` / `identify` / `resetIdentity` | `LoopAnalytics.track` / `setUserId` / `reset` |
 | `LoopSDK.defineFunnel` | Removed. Funnels are built in the Loop Analytics dashboard. |
 
 Nothing is lost on upgrade: the reporter id (Keychain) and any diagnostics still waiting to send are picked up by the new modules.
@@ -125,6 +163,14 @@ Nothing is lost on upgrade: the reporter id (Keychain) and any diagnostics still
 > after sending a report, it is stored with that id so the developer can
 > reply. Loop does not track you across apps or websites.
 
+If you use **LoopAnalytics**, add:
+
+> This app uses Loop to measure how the app is used. Loop records the
+> actions you take in the app (product interaction) with a random per-device
+> id, and, if the app supplies them, the app's own user id and user
+> properties. This data is linked to that user id, used only for analytics,
+> and not used to track you across apps or websites.
+
 ## App Store review
 
 Each module ships its own `PrivacyInfo.xcprivacy`:
@@ -132,6 +178,7 @@ Each module ships its own `PrivacyInfo.xcprivacy`:
 - **LoopCore**: no tracking, no collected data types, no required-reason APIs.
 - **LoopFeedback**: declares the optional email address (linked, not tracking, app functionality).
 - **LoopDiagnostics**: no manifest entries beyond Core's.
+- **LoopAnalytics**: declares device id, user id, product interaction and other data types (the user properties your app supplies), all linked, not tracking, purpose Analytics; plus `UserDefaults` with reason `CA92.1`.
 
 There is no `ATTrackingManager` prompt anywhere.
 
@@ -150,13 +197,17 @@ Every request carries `Authorization: Bearer loop_pk_…` and `X-Loop-Reporter-I
 | Feedback | POST | `/api/ingest/submissions` |
 | Feedback | POST | `/api/ingest/contact` |
 | Diagnostics | POST | `/api/ingest/events` |
+| Analytics | POST | `/api/ingest/analytics/batch` |
+
+Analytics bodies are gzip-compressed (`Content-Encoding: gzip`).
 
 ## Repository layout
 
 ```
 Package.swift          SwiftPM manifest (sources under ios/)
 *.podspec              one podspec per module
-ios/Sources/           LoopCore, LoopFeedback, LoopDiagnostics
+conformance/           shared, platform-neutral behaviour cases (JSON)
+ios/Sources/           LoopCore, LoopFeedback, LoopDiagnostics, LoopAnalytics
 ios/Tests/             one test target per module + shared LoopTestSupport
 ios/Examples/          minimal SwiftUI host app (see its README)
 ```
@@ -171,6 +222,12 @@ xcodebuild -scheme Loop-Package -destination 'generic/platform=iOS Simulator' bu
 ```
 
 The UI is tested by hand with the example app.
+
+`conformance/` holds the shared analytics cases that every platform's SDK must pass (see [conformance/README.md](./conformance/README.md)). The iOS runner:
+
+```bash
+swift test --filter ConformanceTests
+```
 
 ## License
 
