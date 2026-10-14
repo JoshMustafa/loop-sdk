@@ -23,17 +23,23 @@ extension LifecycleSource {
     func beginBackgroundTask(named name: String) -> @Sendable () -> Void { {} }
 }
 
-/// The lifecycle source for the platform the app runs on.
+/// The lifecycle source for the platform the app runs on. Inside an app
+/// extension (or wherever no `UIApplication` exists) it is always in the
+/// foreground and asks for no background time.
 func makePlatformLifecycle() async -> LifecycleSource {
     #if canImport(UIKit) && os(iOS)
-    return await IOSLifecycleSource()
-    #else
-    return AlwaysForegroundLifecycle()
+    if let source = await IOSLifecycleSource.make() { return source }
     #endif
+    return AlwaysForegroundLifecycle()
 }
 
-/// Platforms without app lifecycle notifications (macOS): always in the
-/// foreground.
+/// Whether the bundle at `bundleURL` is an app extension (`.appex`).
+func isAppExtension(bundleURL: URL) -> Bool {
+    bundleURL.pathExtension == "appex"
+}
+
+/// Platforms or processes without app lifecycle notifications (macOS, app
+/// extensions): always in the foreground.
 final class AlwaysForegroundLifecycle: LifecycleSource {
     var isForeground: Bool { true }
 
@@ -41,20 +47,37 @@ final class AlwaysForegroundLifecycle: LifecycleSource {
 }
 
 #if canImport(UIKit) && os(iOS)
+/// The app's `UIApplication`, looked up at runtime because
+/// `UIApplication.shared` is unavailable to code linked into app extensions.
+/// Nil inside an extension.
+@MainActor
+func hostApplication() -> UIApplication? {
+    guard !isAppExtension(bundleURL: Bundle.main.bundleURL) else { return nil }
+    return UIApplication.value(forKey: "sharedApplication") as? UIApplication
+}
+
 /// `UIApplication.didBecomeActiveNotification` → foreground,
 /// `didEnterBackgroundNotification` → background.
 final class IOSLifecycleSource: LifecycleSource, @unchecked Sendable {
+    private let application: UIApplication
     private let lock = NSLock()
     private var foreground: Bool
     private var onChange: (@Sendable (Bool) -> Void)?
     private var observers: [NSObjectProtocol] = []
 
+    /// The source for the running app; nil inside an app extension.
+    @MainActor
+    static func make() -> IOSLifecycleSource? {
+        hostApplication().map(IOSLifecycleSource.init)
+    }
+
     /// Reads the state and starts observing on the main thread, so no
     /// transition is missed in between. Launching (`.inactive`) counts as
     /// the foreground.
     @MainActor
-    init() {
-        foreground = UIApplication.shared.applicationState != .background
+    private init(application: UIApplication) {
+        self.application = application
+        foreground = application.applicationState != .background
         let center = NotificationCenter.default
         observers = [
             center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
@@ -83,7 +106,7 @@ final class IOSLifecycleSource: LifecycleSource, @unchecked Sendable {
     /// A `UIApplication` background task, ended by the returned closure or
     /// by the system's expiration handler, whichever comes first.
     func beginBackgroundTask(named name: String) -> @Sendable () -> Void {
-        let task = BackgroundTask()
+        let task = BackgroundTask(application)
         task.begin(named: name)
         return { task.end() }
     }
@@ -99,11 +122,16 @@ final class IOSLifecycleSource: LifecycleSource, @unchecked Sendable {
 
 /// One UIKit background task; ends at most once.
 private final class BackgroundTask: @unchecked Sendable {
+    private let application: UIApplication
     private let lock = NSLock()
     private var id = UIBackgroundTaskIdentifier.invalid
 
+    init(_ application: UIApplication) {
+        self.application = application
+    }
+
     func begin(named name: String) {
-        let id = UIApplication.shared.beginBackgroundTask(withName: name) { [self] in end() }
+        let id = application.beginBackgroundTask(withName: name) { [self] in end() }
         lock.lock(); defer { lock.unlock() }
         self.id = id
     }
@@ -117,9 +145,9 @@ private final class BackgroundTask: @unchecked Sendable {
         // The expiration handler runs on the main thread and must end the
         // task before it returns; the flush finishes on any thread.
         if Thread.isMainThread {
-            UIApplication.shared.endBackgroundTask(id)
+            application.endBackgroundTask(id)
         } else {
-            DispatchQueue.main.async { UIApplication.shared.endBackgroundTask(id) }
+            DispatchQueue.main.async { self.application.endBackgroundTask(id) }
         }
     }
 }

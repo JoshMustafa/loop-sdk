@@ -78,7 +78,13 @@ actor EventStore {
     /// JSON-encoded (e.g. a NaN built directly as a `JSONValue`) is not
     /// queued.
     func add(_ event: LoopEvent) {
-        guard let line = try? encoder.encode(event.storageJSON()) else { return }
+        let line: Data
+        do {
+            line = try encoder.encode(event.storageJSON())
+        } catch {
+            Log.analytics.error("Dropped event \"\(event.name)\": it could not be encoded as JSON (\(error.localizedDescription))")
+            return
+        }
         entries.append(Entry(event: event, line: line))
         if entries.count > maxQueueSize {
             // Drop the oldest batch, but always keep the event just added.
@@ -123,6 +129,7 @@ actor EventStore {
             fileLines += 1
         } catch {
             // The event is still queued in memory; fix the file next time.
+            Log.analytics.error("Could not append to the analytics queue file; will rewrite it on the next change: \(error.localizedDescription)")
             needsRewrite = true
         }
     }
@@ -140,6 +147,9 @@ actor EventStore {
             fileLines = entries.count
             needsRewrite = false
         } catch {
+            // Covers every step of `replaceDurably` (directory, temp file,
+            // write, rename): they throw to here, so each failure is logged once.
+            Log.analytics.error("Could not rewrite the analytics queue file; \(entries.count) event(s) are kept in memory: \(error.localizedDescription)")
             needsRewrite = true
         }
     }
@@ -161,6 +171,7 @@ actor EventStore {
             try handle.write(contentsOf: data)
             try handle.synchronize()
         } catch {
+            // Logged by `rewrite()`, which this throws to.
             try? FileManager.default.removeItem(at: temp)
             throw error
         }

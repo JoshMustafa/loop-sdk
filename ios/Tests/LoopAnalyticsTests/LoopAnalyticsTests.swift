@@ -192,6 +192,33 @@ final class LoopAnalyticsTests: XCTestCase {
         await flush.value // returns once the request times out
     }
 
+    func test_reconfiguring_after_start_warns_once_and_keeps_the_engine() async throws {
+        let log = LogRecorder()
+        defer { log.stop() }
+        let h = try await facadeHarness()
+        configure()
+        LoopAnalytics.track("A")
+        await LoopAnalytics.flush()
+        XCTAssertEqual(log.messages(.warning).filter { $0.contains("Loop.configure") }, [])
+
+        Loop.configure(
+            apiKey: "loop_pk_other",
+            options: LoopOptions(serverUrl: URL(string: "https://other.test")!, tierProvider: nil)
+        )
+        LoopAnalytics.track("B")
+        LoopAnalytics.setUserId("u1")
+        LoopAnalytics.track("C")
+        await LoopAnalytics.flush()
+
+        XCTAssertEqual(log.messages(.warning).filter { $0.contains("Loop.configure") }.count, 1)
+        XCTAssertEqual(h.transport.sentNames, ["A", "B", "C"])
+        for sent in h.transport.requests {
+            XCTAssertEqual(sent.request.url?.host, "loop.test")
+            XCTAssertEqual(sent.request.value(forHTTPHeaderField: "Authorization"), "Bearer loop_pk_test")
+        }
+        XCTAssertEqual(LoopAnalytics.deviceId, "DEVICE-1R")
+    }
+
     // MARK: - Engine: restart and dispose
 
     func test_restart_during_inflight_upload_resends_identical_batch() async throws {
@@ -379,6 +406,8 @@ final class LoopAnalyticsTests: XCTestCase {
     }
 
     func test_invalid_names_and_oversized_events_are_dropped() async throws {
+        let log = LogRecorder()
+        defer { log.stop() }
         let h = try await harness()
         let longest = String(repeating: "n", count: 128)
         await h.engine.track("", nil)
@@ -391,6 +420,9 @@ final class LoopAnalyticsTests: XCTestCase {
 
         XCTAssertEqual(h.transport.sentNames, ["Odd", longest])
         XCTAssertEqual(h.transport.sentEvents.first?["props"], .object(["n": .string("nan"), "inner": .object([:])]))
+        let warnings = log.messages(.warning)
+        XCTAssertEqual(warnings.filter { $0.contains("Dropped event") }.count, 4, "\(warnings)")
+        XCTAssertTrue(warnings.contains { $0.contains("\"Huge\"") && $0.contains("32768") }, "\(warnings)")
     }
 
     func test_event_size_limit_is_32_kb_of_wire_json() async throws {
@@ -638,6 +670,39 @@ final class LoopAnalyticsTests: XCTestCase {
     }
 
     // MARK: - Environment
+
+    func test_privacy_manifest_declares_what_analytics_collects() throws {
+        let url = try XCTUnwrap(Bundle.module.url(forResource: "PrivacyInfo", withExtension: "xcprivacy"))
+        let plist = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: Data(contentsOf: url), format: nil) as? [String: Any]
+        )
+        XCTAssertEqual(plist["NSPrivacyTracking"] as? Bool, false)
+
+        let collected = try XCTUnwrap(plist["NSPrivacyCollectedDataTypes"] as? [[String: Any]])
+        XCTAssertEqual(Set(collected.compactMap { $0["NSPrivacyCollectedDataType"] as? String }), [
+            "NSPrivacyCollectedDataTypeDeviceID",
+            "NSPrivacyCollectedDataTypeUserID",
+            "NSPrivacyCollectedDataTypeProductInteraction",
+            "NSPrivacyCollectedDataTypeOtherDataTypes",
+        ])
+        XCTAssertEqual(collected.count, 4)
+        for entry in collected {
+            let type = entry["NSPrivacyCollectedDataType"] as? String ?? "?"
+            XCTAssertEqual(entry["NSPrivacyCollectedDataTypeLinked"] as? Bool, true, type)
+            XCTAssertEqual(entry["NSPrivacyCollectedDataTypeTracking"] as? Bool, false, type)
+            XCTAssertEqual(entry["NSPrivacyCollectedDataTypePurposes"] as? [String], ["NSPrivacyCollectedDataTypePurposeAnalytics"], type)
+        }
+
+        let accessed = try XCTUnwrap(plist["NSPrivacyAccessedAPITypes"] as? [[String: Any]])
+        XCTAssertEqual(accessed.count, 1)
+        XCTAssertEqual(accessed.first?["NSPrivacyAccessedAPIType"] as? String, "NSPrivacyAccessedAPICategoryUserDefaults")
+        XCTAssertEqual(accessed.first?["NSPrivacyAccessedAPITypeReasons"] as? [String], ["CA92.1"])
+    }
+
+    func test_app_extensions_are_recognised_by_their_bundle() {
+        XCTAssertTrue(isAppExtension(bundleURL: URL(fileURLWithPath: "/var/containers/Bundle/Application/X/Host.app/PlugIns/Share.appex")))
+        XCTAssertFalse(isAppExtension(bundleURL: URL(fileURLWithPath: "/var/containers/Bundle/Application/X/Host.app")))
+    }
 
     func test_queue_directory_is_created_and_excluded_from_backup() throws {
         let base = FileManager.default.temporaryDirectory

@@ -46,11 +46,17 @@ extension Dictionary where Key == String, Value == JSONValue {
     }
 }
 
-/// A settable clock.
+/// A settable clock. Thread-safe: the test sets it while the engine reads it.
 final class FakeClock: LoopClock, @unchecked Sendable {
-    var now: Int64
+    private let lock = NSLock()
+    private var _now: Int64
 
-    init(_ now: Int64) { self.now = now }
+    init(_ now: Int64) { _now = now }
+
+    var now: Int64 {
+        get { lock.lock(); defer { lock.unlock() }; return _now }
+        set { lock.lock(); defer { lock.unlock() }; _now = newValue }
+    }
 
     func nowMillis() -> Int64 { now }
 }
@@ -213,24 +219,34 @@ final class FakeLifecycle: LifecycleSource, @unchecked Sendable {
 }
 
 /// Periodic timers that fire only when the test advances the fake clock.
+///
+/// Every timer's state is read and written under `lock` only: cancelling
+/// (from the engine) and advancing (from the test) can come from different
+/// threads.
 final class FakeScheduler: Scheduler, @unchecked Sendable {
-    private final class Entry: Cancellable, @unchecked Sendable {
+    private struct Entry {
         let interval: Int64
         var due: Int64
         let tick: @Sendable () -> Void
         var cancelled = false
+    }
 
-        init(interval: Int64, due: Int64, tick: @escaping @Sendable () -> Void) {
-            self.interval = interval
-            self.due = due
-            self.tick = tick
+    /// Cancels its entry through the scheduler, under the scheduler's lock.
+    private final class Handle: Cancellable, @unchecked Sendable {
+        private weak var scheduler: FakeScheduler?
+        private let index: Int
+
+        init(_ scheduler: FakeScheduler, _ index: Int) {
+            self.scheduler = scheduler
+            self.index = index
         }
 
-        func cancel() { cancelled = true }
+        func cancel() { scheduler?.cancel(index) }
     }
 
     private let lock = NSLock()
     private let clock: FakeClock
+    /// Guarded by `lock`. Entries are never removed, so an index stays valid.
     private var entries: [Entry] = []
 
     init(clock: FakeClock) {
@@ -251,10 +267,10 @@ final class FakeScheduler: Scheduler, @unchecked Sendable {
 
     func every(_ seconds: TimeInterval, _ tick: @escaping @Sendable () -> Void) -> Cancellable {
         let interval = max(1, Int64((seconds * 1000).rounded()))
-        let entry = Entry(interval: interval, due: clock.now + interval, tick: tick)
+        let due = clock.now + interval
         lock.lock(); defer { lock.unlock() }
-        entries.append(entry)
-        return entry
+        entries.append(Entry(interval: interval, due: due, tick: tick))
+        return Handle(self, entries.count - 1)
     }
 
     /// Moves the clock forward by `ms`, firing every periodic tick that comes
@@ -262,20 +278,29 @@ final class FakeScheduler: Scheduler, @unchecked Sendable {
     /// `settle` runs after each tick (e.g. `engine.waitUntilIdle()`).
     func advance(by ms: Int64, settle: () async -> Void) async {
         let target = clock.now + ms
-        while let entry = nextDue(upTo: target) {
-            clock.now = entry.due
-            entry.due += entry.interval
-            entry.tick()
+        while let next = takeNextDue(upTo: target) {
+            clock.now = next.due
+            next.tick()
             await settle()
         }
         clock.now = target
     }
 
-    private func nextDue(upTo target: Int64) -> Entry? {
+    /// The earliest tick due at or before `target` (ties in the order the
+    /// timers were scheduled), with that timer already moved to its next
+    /// due time.
+    private func takeNextDue(upTo target: Int64) -> (due: Int64, tick: @Sendable () -> Void)? {
         lock.lock(); defer { lock.unlock() }
-        return entries
-            .filter { !$0.cancelled && $0.due <= target }
-            .min { $0.due < $1.due }
+        let candidates = entries.indices.filter { !entries[$0].cancelled && entries[$0].due <= target }
+        guard let index = candidates.min(by: { entries[$0].due < entries[$1].due }) else { return nil }
+        let due = entries[index].due
+        entries[index].due += entries[index].interval
+        return (due, entries[index].tick)
+    }
+
+    private func cancel(_ index: Int) {
+        lock.lock(); defer { lock.unlock() }
+        entries[index].cancelled = true
     }
 }
 
@@ -440,5 +465,36 @@ final class EngineHarness: @unchecked Sendable {
 
     func removeStorage() {
         try? FileManager.default.removeItem(at: directory)
+    }
+}
+
+/// Records what the module logs while it is alive (until `stop()`).
+final class LogRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var entries: [(level: Log.Level, message: String)] = []
+    private var token: Int?
+
+    init() {
+        token = Log.addObserver { [weak self] level, message in self?.record(level, message) }
+    }
+
+    deinit { stop() }
+
+    func stop() {
+        lock.lock()
+        let token = self.token
+        self.token = nil
+        lock.unlock()
+        if let token { Log.removeObserver(token) }
+    }
+
+    func messages(_ level: Log.Level) -> [String] {
+        lock.lock(); defer { lock.unlock() }
+        return entries.filter { $0.level == level }.map(\.message)
+    }
+
+    private func record(_ level: Log.Level, _ message: String) {
+        lock.lock(); defer { lock.unlock() }
+        entries.append((level, message))
     }
 }

@@ -215,4 +215,38 @@ final class EventStoreTests: XCTestCase {
         XCTAssertEqual(current, ["good"])
         XCTAssertEqual(try fileLines().count, 1)
     }
+
+    // MARK: Logging
+
+    func test_write_failures_are_logged_and_the_events_stay_in_memory() async throws {
+        let log = LogRecorder()
+        defer { log.stop() }
+        // A regular file where the queue's directory should be: every write fails.
+        let blocker = dir.appendingPathComponent("blocker")
+        try Data().write(to: blocker)
+        let store = await EventStore(fileURL: blocker.appendingPathComponent("events.jsonl"), maxQueueSize: 10)
+
+        await store.add(.sample(id: "a")) // appended
+        await store.add(.sample(id: "b")) // the failed append makes this a rewrite
+
+        let count = await store.count
+        XCTAssertEqual(count, 2)
+        let errors = log.messages(.error)
+        XCTAssertEqual(errors.count, 2, "\(errors)")
+        XCTAssertTrue(errors.first?.contains("append") == true, "\(errors)")
+        XCTAssertTrue(errors.last?.contains("rewrite") == true, "\(errors)")
+    }
+
+    func test_an_unencodable_event_is_logged_by_name() async {
+        let log = LogRecorder()
+        defer { log.stop() }
+        let store = await open()
+
+        await store.add(.sample(id: "nan", name: "Score Posted", props: ["score": .number(.nan)]))
+
+        let count = await store.count
+        XCTAssertEqual(count, 0)
+        XCTAssertEqual(log.messages(.error).count, 1)
+        XCTAssertTrue(log.messages(.error).first?.contains("Score Posted") == true, "\(log.messages(.error))")
+    }
 }

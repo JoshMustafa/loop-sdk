@@ -37,6 +37,9 @@ public enum LoopAnalytics {
     /// (options passed earlier are kept until then). Without it, the first
     /// call after `Loop.configure` starts analytics with the default
     /// options. Later calls are ignored.
+    ///
+    /// Analytics keeps the API key and server it started with: calling
+    /// `Loop.configure` again later does not change them.
     public static func start(options: LoopAnalyticsOptions = LoopAnalyticsOptions()) {
         AnalyticsRuntime.shared.start(options: options)
     }
@@ -152,6 +155,7 @@ final class AnalyticsRuntime: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         guard slot == nil, startOptions == nil else {
             Log.analytics.warning("LoopAnalytics.start(options:) ignored: analytics was already started")
+            slot?.warnIfReconfigured()
             return
         }
         startOptions = options
@@ -201,6 +205,7 @@ final class AnalyticsRuntime: @unchecked Sendable {
     private func enqueueOperation(_ operation: @escaping @Sendable (AnalyticsEngine?) async -> Void) -> Bool {
         lock.lock(); defer { lock.unlock() }
         guard let slot = startedSlot() else { return false }
+        slot.warnIfReconfigured()
         operations.yield { await operation(slot.engine) }
         return true
     }
@@ -209,8 +214,11 @@ final class AnalyticsRuntime: @unchecked Sendable {
     /// been called and nothing started it yet. Call with `lock` held.
     private func startedSlot() -> EngineSlot? {
         if let slot { return slot }
+        // Read before the configuration, so a `Loop.configure` racing with
+        // this can only cause a needless warning, never hide a real one.
+        let version = LoopRuntime.shared.configurationVersion
         guard let configuration = LoopRuntime.shared.configuration else { return nil }
-        let slot = EngineSlot()
+        let slot = EngineSlot(configurationVersion: version)
         self.slot = slot
         let options = startOptions ?? LoopAnalyticsOptions()
         let makeEnvironment = self.makeEnvironment
@@ -227,13 +235,33 @@ final class AnalyticsRuntime: @unchecked Sendable {
     }
 }
 
-/// Holds the engine once its (asynchronous) start has run.
+/// Holds the engine once its (asynchronous) start has run, and the
+/// `Loop.configure` it was built from.
 final class EngineSlot: @unchecked Sendable {
+    /// `LoopRuntime.configurationVersion` when the engine was built.
+    private let configurationVersion: Int
     private let lock = NSLock()
     private var _engine: AnalyticsEngine?
+    private var warnedAboutReconfigure = false
+
+    init(configurationVersion: Int) {
+        self.configurationVersion = configurationVersion
+    }
 
     var engine: AnalyticsEngine? {
         get { lock.lock(); defer { lock.unlock() }; return _engine }
         set { lock.lock(); defer { lock.unlock() }; _engine = newValue }
+    }
+
+    /// Logs once if `Loop.configure` was called again after this engine was
+    /// built: the engine keeps its original key and server.
+    func warnIfReconfigured() {
+        guard LoopRuntime.shared.configurationVersion != configurationVersion else { return }
+        lock.lock()
+        let warn = !warnedAboutReconfigure
+        warnedAboutReconfigure = true
+        lock.unlock()
+        guard warn else { return }
+        Log.analytics.warning("Loop.configure was called again after analytics started; analytics keeps the API key and server it started with. Call Loop.configure once, at launch.")
     }
 }
