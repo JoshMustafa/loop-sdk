@@ -1,7 +1,9 @@
 import XCTest
-@testable import LoopSDK
+import LoopCore
+import LoopTestSupport
+@testable import LoopFeedback
 
-final class LoopClientTests: XCTestCase {
+final class FeedbackClientTests: XCTestCase {
 
     private let baseURL = URL(string: "https://example.test")!
     private let apiKey = "loop_pk_pebble_aabbccdd11223344"
@@ -18,7 +20,7 @@ final class LoopClientTests: XCTestCase {
             return (.with(status: 200), Data(body.utf8))
         }
 
-        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
+        let client = FeedbackClient(http: LoopHTTP(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session))
         let project = try await client.fetchProject()
 
         XCTAssertEqual(project.id, "pebble")
@@ -34,7 +36,7 @@ final class LoopClientTests: XCTestCase {
         let body = ##"{"id":"pebble","name":"Pebble","icon":"🪨","accent":"#3a2a1f","version":"v1.0","collectEmail":true}"##
         let session = MockURLProtocol.install { _ in (.with(status: 200), Data(body.utf8)) }
 
-        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
+        let client = FeedbackClient(http: LoopHTTP(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session))
 
         let project = try await client.fetchProject()
         XCTAssertTrue(project.collectEmail)
@@ -47,7 +49,7 @@ final class LoopClientTests: XCTestCase {
         let body = ##"{"id":"pebble","name":"Pebble","icon":"🪨","accent":"#3a2a1f","version":"v1.0"}"##
         let session = MockURLProtocol.install { _ in (.with(status: 200), Data(body.utf8)) }
 
-        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
+        let client = FeedbackClient(http: LoopHTTP(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session))
 
         let project = try await client.fetchProject()
         XCTAssertFalse(project.collectEmail)
@@ -71,7 +73,7 @@ final class LoopClientTests: XCTestCase {
             (.with(status: 200), Data(json.utf8))
         }
 
-        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
+        let client = FeedbackClient(http: LoopHTTP(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session))
         let page = try await client.fetchBugs()
 
         XCTAssertEqual(page.items.count, 1)
@@ -90,7 +92,7 @@ final class LoopClientTests: XCTestCase {
             return (.with(status: 200), Data(#"{"items":[],"nextCursor":null}"#.utf8))
         }
 
-        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
+        let client = FeedbackClient(http: LoopHTTP(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session))
         _ = try await client.fetchBugs(cursor: "abc", limit: 5)
 
         let query = capturedURL?.query ?? ""
@@ -103,7 +105,7 @@ final class LoopClientTests: XCTestCase {
         let session = MockURLProtocol.install { _ in
             (.with(status: 401), Data(#"{"error":"invalid api key"}"#.utf8))
         }
-        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
+        let client = FeedbackClient(http: LoopHTTP(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session))
 
         do {
             _ = try await client.fetchProject()
@@ -119,7 +121,7 @@ final class LoopClientTests: XCTestCase {
         let session = MockURLProtocol.install { _ in
             (.with(status: 400), Data(#"{"error":"missing X-Loop-Reporter-Id"}"#.utf8))
         }
-        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
+        let client = FeedbackClient(http: LoopHTTP(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session))
 
         do {
             _ = try await client.fetchProject()
@@ -143,7 +145,7 @@ final class LoopClientTests: XCTestCase {
             return (.with(status: 200), Data(#"{"id":"LP-1","votes":1,"my":"up"}"#.utf8))
         }
 
-        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
+        let client = FeedbackClient(http: LoopHTTP(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session))
         let result = try await client.vote(itemId: "LP-1", dir: .up)
 
         XCTAssertEqual(result.votes, 1)
@@ -163,14 +165,14 @@ final class LoopClientTests: XCTestCase {
             return (.with(status: 201), Data(#"{"id":"LP-1","kind":"bug","status":"open","title":"x","body":"y","whenLabel":"now","createdAt":"2026-05-10T12:00:00Z","votes":0,"my":null,"replyCount":0}"#.utf8))
         }
 
-        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
-        let payload = LoopClient.SubmitPayload(
+        let client = FeedbackClient(http: LoopHTTP(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session))
+        let payload = FeedbackClient.SubmitPayload(
             type: "bug",
             title: "Crash",
             body: "It crashes",
             reporter_id: reporterId,
-            device_meta: LoopClient.DeviceMetaPayload(device: "iPhone", os: "iOS 18", appVersion: "1.0", locale: "en", network: "WiFi", sessionId: "sess_x"),
-            user: LoopClient.UserPayload(tier: "paid")
+            device_meta: FeedbackClient.DeviceMetaPayload(device: "iPhone", os: "iOS 18", appVersion: "1.0", locale: "en", network: "WiFi", sessionId: "sess_x"),
+            user: FeedbackClient.UserPayload(tier: "paid")
         )
         _ = try await client.submit(payload: payload)
 
@@ -187,13 +189,13 @@ final class LoopClientTests: XCTestCase {
             return (.with(status: 201), Data(#"{"id":"LP-1","kind":"bug","status":"open","title":"x","body":"y","whenLabel":"now","createdAt":"2026-05-10T12:00:00Z","votes":0,"my":null,"replyCount":0}"#.utf8))
         }
 
-        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
-        let payload = LoopClient.SubmitPayload(
+        let client = FeedbackClient(http: LoopHTTP(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session))
+        let payload = FeedbackClient.SubmitPayload(
             type: "bug",
             title: "Crash",
             body: "It crashes",
             reporter_id: reporterId,
-            device_meta: LoopClient.DeviceMetaPayload(device: "iPhone", os: "iOS 18", appVersion: "1.0", locale: "en", network: "WiFi", sessionId: "sess_x"),
+            device_meta: FeedbackClient.DeviceMetaPayload(device: "iPhone", os: "iOS 18", appVersion: "1.0", locale: "en", network: "WiFi", sessionId: "sess_x"),
             user: nil
         )
         _ = try await client.submit(payload: payload)
@@ -230,7 +232,7 @@ final class LoopClientTests: XCTestCase {
             return (.with(status: 202), Data())
         }
 
-        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
+        let client = FeedbackClient(http: LoopHTTP(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session))
         try await client.submitContact(email: "reporter@example.com")
 
         XCTAssertEqual(capturedMethod, "POST")
@@ -244,7 +246,7 @@ final class LoopClientTests: XCTestCase {
 
     func test_submitContact_throws_when_the_address_is_rejected() async throws {
         let session = MockURLProtocol.install { _ in (.with(status: 422), Data()) }
-        let client = LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
+        let client = FeedbackClient(http: LoopHTTP(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session))
 
         do {
             try await client.submitContact(email: "nope")
@@ -264,4 +266,17 @@ private extension JSONDecoder {
     }
 }
 
-// `httpBodyStreamData()` lives in DiagnosticsTests.swift (shared, internal).
+
+extension FeedbackClientTests {
+    func test_feedback_routes_are_unchanged() async throws {
+        var paths: [String] = []
+        let session = MockURLProtocol.install { req in
+            paths.append(req.url!.path)
+            return (.with(status: 200), Data(#"{"items":[],"nextCursor":null}"#.utf8))
+        }
+        let client = FeedbackClient(http: LoopHTTP(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session))
+        _ = try await client.fetchBugs()
+        _ = try await client.fetchFeatures()
+        XCTAssertEqual(paths, ["/api/ingest/bugs", "/api/ingest/features"])
+    }
+}

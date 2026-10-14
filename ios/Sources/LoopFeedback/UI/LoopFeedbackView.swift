@@ -5,7 +5,7 @@ import UIKit
 /// The public-facing SwiftUI surface. Drop this inside a `.sheet { … }`
 /// from your settings screen. The look is "ink-on-paper" — no host accent,
 /// no system blue, mono caps everywhere identity matters.
-public struct LoopReporterView: View {
+public struct LoopFeedbackView: View {
     @StateObject private var model: LoopReporterModel
     @State private var kind: LoopItem.Kind = .bug
     /// Setting this presents the compose sheet pre-selected to the bound
@@ -25,8 +25,7 @@ public struct LoopReporterView: View {
     private var dark: Bool { scheme == .dark }
 
     public init() {
-        let runtime = LoopSDK.runtime()
-        _model = StateObject(wrappedValue: runtime.makeReporterModel())
+        _model = StateObject(wrappedValue: LoopFeedback.makeModel())
     }
 
     public var body: some View {

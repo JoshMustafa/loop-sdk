@@ -1,8 +1,9 @@
 #if os(iOS)
 import Foundation
+import LoopCore
 import SwiftUI
 
-/// View-model behind `LoopReporterView`. Holds the bug + feature lists,
+/// View-model behind `LoopFeedbackView`. Holds the bug + feature lists,
 /// drives loading/voting/submitting, and surfaces user-visible errors.
 ///
 /// Uses `ObservableObject` instead of `@Observable` so we keep iOS 16
@@ -34,16 +35,16 @@ final class LoopReporterModel: ObservableObject {
     @Published var detail: LoopItemDetail?
     @Published var detailState: LoadState = .idle
 
-    let client: LoopClient
+    let client: FeedbackClient
     let reporterId: String
     let sessionId: String
-    let tierProvider: LoopConfiguration.TierProvider?
+    let tierProvider: LoopOptions.TierProvider?
 
     init(
-        client: LoopClient,
+        client: FeedbackClient,
         reporterId: String,
         sessionId: String,
-        tierProvider: LoopConfiguration.TierProvider? = nil
+        tierProvider: LoopOptions.TierProvider? = nil
     ) {
         self.client = client
         self.reporterId = reporterId
@@ -260,13 +261,13 @@ final class LoopReporterModel: ObservableObject {
         // Resolved fresh on every submit so a downgrade (paid → free)
         // shows up on the next report without the host having to call
         // any setter. nil when the host didn't configure a tierProvider.
-        let resolvedTier = LoopConfiguration.resolveTier(from: tierProvider)
-        let payload = LoopClient.SubmitPayload(
+        let resolvedTier = LoopOptions.resolveTier(from: tierProvider)
+        let payload = FeedbackClient.SubmitPayload(
             type: kind.rawValue,
             title: trimmedTitle,
             body: trimmedBody,
             reporter_id: reporterId,
-            device_meta: LoopClient.DeviceMetaPayload(
+            device_meta: FeedbackClient.DeviceMetaPayload(
                 device: device.device,
                 os: device.os,
                 appVersion: device.appVersion,
@@ -274,7 +275,7 @@ final class LoopReporterModel: ObservableObject {
                 network: device.network,
                 sessionId: device.sessionId
             ),
-            user: resolvedTier.map { LoopClient.UserPayload(tier: $0) }
+            user: resolvedTier.map { FeedbackClient.UserPayload(tier: $0) }
         )
 
         let result = try await client.submit(payload: payload)

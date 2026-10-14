@@ -2,7 +2,7 @@
 import SwiftUI
 
 /// Opens the Loop composer **directly**, pre-filled and ready to send —
-/// skipping the board list that `LoopReporterView` shows first. Use this when
+/// skipping the board list that `LoopFeedbackView` shows first. Use this when
 /// the host already knows what the user wants to report (e.g. a guided
 /// troubleshooting flow that has gathered context) and wants them to land on
 /// an editable, pre-populated report.
@@ -16,7 +16,7 @@ import SwiftUI
 ///     }
 ///
 /// On a successful submit it shows the same confirmation screen as
-/// `LoopReporterView`, then dismisses back to the host.
+/// `LoopFeedbackView`, then dismisses back to the host.
 public struct LoopComposerView: View {
     @StateObject private var model: LoopReporterModel
     @State private var submittedId: String?
@@ -27,8 +27,7 @@ public struct LoopComposerView: View {
     private let initialBody: String
 
     public init(kind: LoopItem.Kind = .bug, title: String = "", body: String = "") {
-        let runtime = LoopSDK.runtime()
-        _model = StateObject(wrappedValue: runtime.makeReporterModel())
+        _model = StateObject(wrappedValue: LoopFeedback.makeModel())
         self.kind = kind
         self.initialTitle = title
         self.initialBody = body

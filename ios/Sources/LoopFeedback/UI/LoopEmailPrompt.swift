@@ -1,4 +1,5 @@
 import Foundation
+import LoopCore
 #if os(iOS)
 import SwiftUI
 #endif
@@ -55,13 +56,13 @@ struct LoopEmailPrompt {
     /// to confirm." about mail that is never coming.
     ///
     /// Defined once here rather than inlined at each construction site: there
-    /// are two of them (`LoopReporterView` and `LoopComposerView`), and this is
+    /// are two of them (`LoopFeedbackView` and `LoopComposerView`), and this is
     /// the type that defines the closure's contract.
     ///
     /// Every error becomes `false`. The report is already filed and safe by the
     /// time this runs, so a failed capture must never surface as a failed
     /// report — the prompt just offers to try again.
-    static func handler(client: LoopClient, project: LoopProject?) -> ((String) async -> Bool)? {
+    static func handler(client: FeedbackClient, project: LoopProject?) -> ((String) async -> Bool)? {
         guard project?.collectEmail == true else { return nil }
 
         return { email in

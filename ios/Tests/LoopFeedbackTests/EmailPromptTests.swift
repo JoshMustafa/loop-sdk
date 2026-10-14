@@ -1,5 +1,7 @@
 import XCTest
-@testable import LoopSDK
+import LoopCore
+import LoopTestSupport
+@testable import LoopFeedback
 
 final class EmailPromptTests: XCTestCase {
     func test_plausible_addresses_are_accepted() {

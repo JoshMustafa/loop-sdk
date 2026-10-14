@@ -1,5 +1,7 @@
 import XCTest
-@testable import LoopSDK
+import LoopCore
+import LoopTestSupport
+@testable import LoopFeedback
 
 /// Covers the handler `LoopSubmittedView` is given, not the view itself —
 /// SwiftUI layout is not unit-tested anywhere in this repo.
@@ -17,8 +19,8 @@ final class SubmittedEmailHandlerTests: XCTestCase {
     private let apiKey = "loop_pk_pebble_aabbccdd11223344"
     private let reporterId = "r_abcd1234abcd"
 
-    private func makeClient(session: URLSession) -> LoopClient {
-        LoopClient(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session)
+    private func makeClient(session: URLSession) -> FeedbackClient {
+        FeedbackClient(http: LoopHTTP(baseURL: baseURL, apiKey: apiKey, reporterId: reporterId, session: session))
     }
 
     private func project(collectEmail: Bool) -> LoopProject {

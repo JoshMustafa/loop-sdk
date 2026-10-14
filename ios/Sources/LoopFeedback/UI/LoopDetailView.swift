@@ -1,7 +1,7 @@
 #if os(iOS)
 import SwiftUI
 
-/// Single-item detail screen. Pushed from `LoopReporterView` when the user
+/// Single-item detail screen. Pushed from `LoopFeedbackView` when the user
 /// taps a row. Matches the brutalist "ink-on-paper" board design — big
 /// vote bar, auto-captured meta strip on bugs, full thread, and a pill
 /// composer pinned to the bottom.
