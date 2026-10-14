@@ -4,9 +4,10 @@ Shared, platform-neutral test cases that define how every Loop SDK behaves.
 Each platform has a runner that loads these JSON files and drives its own SDK
 through them:
 
-| Platform | Runner |
-|---|---|
-| Dart (reference) | `loop-sdk-flutter/test/conformance_test.dart` |
+| Platform | Runner | Command |
+|---|---|---|
+| Dart (reference) | `loop-sdk-flutter/test/conformance_test.dart` | `flutter test test/conformance_test.dart` (in `loop-sdk-flutter`) |
+| iOS (Swift) | `loop-sdk-ios/ios/Tests/LoopAnalyticsTests/ConformanceTests.swift` | `swift test --filter ConformanceTests` (in `loop-sdk-ios`) |
 
 Cases live in `cases/<area>/NN-slug.json` (today only `cases/analytics/`).
 `schema.json` is a JSON Schema (draft 2020-12) for a case file.
@@ -55,7 +56,7 @@ Ops:
 | `advance` | `ms` | move the clock forward; fire every periodic flush timer that came due, in order |
 | `lifecycle` | `state`: `foreground` \| `background` | the app moves to that state; both `foreground` and `background` upload anything queued |
 | `respond` | `status`, `headers` (optional object), `body` (optional string) — or `{"op":"respond","error":"network"}` | queue the reply for the next request |
-| `restart` | `options` (optional, replaces the case options) | dispose the instance (dispose may wait for an in-flight upload but must not start a new one) and start a new one over the same storage; on every (re)start the SDK uploads anything already queued (the startup flush) |
+| `restart` | `options` (optional; when present it replaces the case options, when absent the case options stay in force) | dispose the instance (dispose may wait for an in-flight upload but must not start a new one) and start a new one over the same storage; on every (re)start the SDK uploads anything already queued (the startup flush) |
 | `check` | `requests` (int, optional), `queueLength` (int, optional) | assert the running totals now |
 
 `expect` keys (all optional): `requests` — array matched one-to-one, in order, against all recorded request bodies (count must be equal); `queueLength` — events still queued at the end.
@@ -64,7 +65,7 @@ Ops:
 
 Matching: objects match **exactly** (same key set) unless the expected object contains `"$partial": true`, in which case only the listed keys are compared. Arrays match exactly (same length, element-wise). Special expected values:
 - `"<uuid>"`, `"<int>"`, `"<iso8601>"`, `"<any>"` — any UUID string / integer / ISO-8601 string / any value present. `<iso8601>` means a UTC timestamp with a `Z` suffix and optional fractional seconds (`2026-01-01T00:00:00Z`, `2026-01-01T00:00:00.000Z`).
-- `{"$stringLength": N}` — a string of length N.
+- `{"$stringLength": N}` — a string of length N, counted in UTF-16 code units.
 - `{"$sameAs": "requests[0].events"}` — deep-equal to that path of the **actual** recorded requests. Paths have the form `requests[<i>].<field>(.<field>)*`.
 
 Every recorded request must also have path `/api/ingest/analytics/batch`, `Authorization: Bearer loop_pk_test` and `Content-Encoding: gzip` (the runner asserts this for every case).

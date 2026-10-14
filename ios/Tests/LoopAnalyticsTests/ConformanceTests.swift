@@ -168,8 +168,9 @@ private final class ConformanceCaseRunner {
                 )
             }
         case "restart":
-            // As in the Dart runner, absent options mean the defaults.
-            let options = try Self.options(step["options"])
+            // Explicit options replace the case options; absent, they stay
+            // (nil keeps the harness's options).
+            let options = try step["options"].map { try Self.options($0) }
             await engine.dispose()
             h = try await h.restarted(options: options, transport: h.transport)
         case "check":
