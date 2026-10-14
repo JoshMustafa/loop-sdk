@@ -124,7 +124,10 @@ actor AnalyticsEngine {
             return
         }
         guard Sanitize.isValidEventName(name) else {
-            Log.analytics.warning("Dropped event \"\(name)\": names must be 1–\(Sanitize.maxEventNameLength) characters")
+            // Logged publicly, so not the name itself: an invalid one may
+            // not be a name the developer chose.
+            let length = name.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count
+            Log.analytics.warning("Dropped event: its name is \(length) characters once trimmed; names must be 1–\(Sanitize.maxEventNameLength)")
             return
         }
         let event = LoopEvent(

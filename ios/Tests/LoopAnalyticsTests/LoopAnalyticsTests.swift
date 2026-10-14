@@ -483,6 +483,27 @@ final class LoopAnalyticsTests: XCTestCase {
         XCTAssertTrue(warnings.contains { $0.contains("\"Huge\"") && $0.contains("32768") }, "\(warnings)")
     }
 
+    func test_an_invalid_event_name_is_not_logged_only_its_length() async throws {
+        let log = LogRecorder()
+        defer { log.stop() }
+        let h = try await harness()
+        // An app could pass anything here, even user data; it is logged
+        // publicly, so only its length is.
+        let name = "  " + String(repeating: "secret ", count: 19) + "  " // 132 once trimmed
+        await h.engine.track(name, nil)
+        await h.engine.track("  ", nil)
+
+        let messages = log.messages(.warning) + log.messages(.debug) + log.messages(.error)
+        XCTAssertFalse(messages.contains { $0.contains("secret") }, "\(messages)")
+        XCTAssertEqual(
+            log.messages(.warning).filter { $0.hasPrefix("Dropped event") },
+            [
+                "Dropped event: its name is 132 characters once trimmed; names must be 1–128",
+                "Dropped event: its name is 0 characters once trimmed; names must be 1–128",
+            ]
+        )
+    }
+
     func test_event_size_limit_is_32_kb_of_wire_json() async throws {
         let h = try await harness()
         // Measure the fixed part of an event's wire JSON with a probe.
