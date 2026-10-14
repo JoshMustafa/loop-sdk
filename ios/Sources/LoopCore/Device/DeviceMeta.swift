@@ -34,7 +34,7 @@ package struct DeviceMeta: Sendable {
     }
 
     /// Snapshot the current environment. `sessionId` is generated once per
-    /// SDK launch (see `LoopSDK.shared`); this initializer accepts it
+    /// SDK launch (see `LoopRuntime.sessionId`); this initializer accepts it
     /// rather than reading shared state, so the function stays pure.
     package static func capture(sessionId: String) -> DeviceMeta {
         DeviceMeta(

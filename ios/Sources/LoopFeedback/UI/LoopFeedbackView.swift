@@ -1,4 +1,5 @@
 #if os(iOS)
+import LoopCore
 import SwiftUI
 import UIKit
 

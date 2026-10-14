@@ -1,5 +1,7 @@
 import XCTest
-@testable import LoopSDK
+import LoopCore
+import LoopTestSupport
+@testable import LoopDiagnostics
 
 final class DiagnosticsTests: XCTestCase {
 
@@ -53,15 +55,15 @@ final class DiagnosticsTests: XCTestCase {
         session: URLSession,
         tier: String? = "paid"
     ) -> DiagnosticsEngine {
-        let provider: LoopConfiguration.TierProvider? = tier.map { value in { value } }
-        let client = LoopClient(
+        let provider: LoopOptions.TierProvider? = tier.map { value in { value } }
+        let client = DiagnosticsClient(http: LoopHTTP(
             baseURL: URL(string: "https://example.test")!,
             apiKey: "loop_pk_test_aabbccdd11223344",
             reporterId: "r_abcd1234abcd",
             session: session
-        )
+        ))
         return DiagnosticsEngine(
-            client: client,
+            sender: client,
             sessionId: "sess_test_1234",
             tierProvider: provider,
             store: OfflineBufferStore(directory: makeTempDir())
@@ -174,11 +176,29 @@ final class DiagnosticsTests: XCTestCase {
 
     // MARK: - Public API surface
 
-    func test_public_breadcrumb_and_captureDiagnostic_are_safe_without_start() {
-        // Must never crash even if start() was never called: the public
-        // entry points swallow the missing-configuration case.
-        LoopSDK.breadcrumb("no config yet")
-        LoopSDK.captureDiagnostic("NoConfig", severity: .warning)
+    func test_calls_before_configure_do_not_crash_or_send() async throws {
+        // Must never crash or send if Loop.configure was never called.
+        LoopRuntime.shared.resetForTesting()
+        XCTAssertNil(DiagnosticsRuntime.shared.engine())
+        LoopDiagnostics.breadcrumb("no config yet")
+        LoopDiagnostics.capture("NoConfig", severity: .warning)
+        XCTAssertNil(DiagnosticsRuntime.shared.engine())
+    }
+
+    func test_offline_buffer_directory_is_unchanged_for_upgrades() {
+        XCTAssertEqual(OfflineBufferStore.defaultDirectoryName, "LoopSDKDiagnostics")
+    }
+
+    func test_diagnostics_post_to_events_route() async throws {
+        var path: String?
+        let session = MockURLProtocol.install { req in
+            path = req.url?.path
+            return (.with(status: 201), Data())
+        }
+        let client = DiagnosticsClient(http: LoopHTTP(baseURL: URL(string: "https://example.test")!,
+            apiKey: "loop_pk_pebble_aabbccdd11223344", reporterId: "r_abcd1234abcd", session: session))
+        try await client.send(body: Data("{}".utf8))
+        XCTAssertEqual(path, "/api/ingest/events")
     }
 
     // MARK: - Behavior 6: offline buffer + retry
@@ -198,15 +218,15 @@ final class DiagnosticsTests: XCTestCase {
             }
         }
 
-        let provider: LoopConfiguration.TierProvider? = { "free" }
-        let client = LoopClient(
+        let provider: LoopOptions.TierProvider? = { "free" }
+        let client = DiagnosticsClient(http: LoopHTTP(
             baseURL: URL(string: "https://example.test")!,
             apiKey: "loop_pk_test_aabbccdd11223344",
             reporterId: "r_abcd1234abcd",
             session: session
-        )
+        ))
         let engine = DiagnosticsEngine(
-            client: client,
+            sender: client,
             sessionId: "sess_test_1234",
             tierProvider: provider,
             store: store

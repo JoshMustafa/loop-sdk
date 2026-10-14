@@ -1,7 +1,7 @@
 import Foundation
 
 /// Best-effort tier auto-detection used when the host hasn't supplied an
-/// explicit `tierProvider` to `LoopSDK.start(...)`. Returns `"paid"`,
+/// explicit `tierProvider` to `LoopOptions`. Returns `"paid"`,
 /// `"free"`, or `nil` (unknown) without taking any subscription SDK as a
 /// hard dependency.
 ///

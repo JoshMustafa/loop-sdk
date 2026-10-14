@@ -1,4 +1,5 @@
 import Foundation
+import LoopCore
 
 /// Severity of a captured diagnostic event.
 public enum Severity: String, Sendable {
@@ -13,7 +14,7 @@ public enum Severity: String, Sendable {
 ///
 /// Concurrency follows the package convention: a plain class guarded by an
 /// `NSLock` and marked `@unchecked Sendable` — no actors. The actual network
-/// call goes through `LoopClient` (an actor), but the engine's own mutable
+/// call goes through the sender, but the engine's own mutable
 /// state (rate-limit clock) is lock-protected.
 final class DiagnosticsEngine: @unchecked Sendable {
 
@@ -21,9 +22,9 @@ final class DiagnosticsEngine: @unchecked Sendable {
     /// Repeat captures arriving faster than this are dropped.
     static let rateLimitInterval: TimeInterval = 2.0
 
-    private let client: LoopClient
+    private let sender: DiagnosticsSending
     private let sessionId: String
-    private let tierProvider: LoopConfiguration.TierProvider?
+    private let tierProvider: LoopOptions.TierProvider?
     private let store: OfflineBufferStore
     private let buffer: BreadcrumbBuffer
 
@@ -31,13 +32,13 @@ final class DiagnosticsEngine: @unchecked Sendable {
     private var lastCaptureByFingerprint: [String: Date] = [:]
 
     init(
-        client: LoopClient,
+        sender: DiagnosticsSending,
         sessionId: String,
-        tierProvider: LoopConfiguration.TierProvider?,
+        tierProvider: LoopOptions.TierProvider?,
         store: OfflineBufferStore,
         buffer: BreadcrumbBuffer = BreadcrumbBuffer()
     ) {
-        self.client = client
+        self.sender = sender
         self.sessionId = sessionId
         self.tierProvider = tierProvider
         self.store = store
@@ -53,7 +54,7 @@ final class DiagnosticsEngine: @unchecked Sendable {
     // MARK: - Capture
 
     /// Async, throwing core used by tests. The public fire-and-forget entry
-    /// point (`LoopSDK.captureDiagnostic`) wraps this in a detached Task and
+    /// point (`LoopDiagnostics.capture`) wraps this in a detached Task and
     /// swallows errors.
     func capture(
         _ name: String,
@@ -83,7 +84,7 @@ final class DiagnosticsEngine: @unchecked Sendable {
         await flushPending()
 
         do {
-            try await client.sendDiagnostic(body: payload)
+            try await sender.send(body: payload)
         } catch {
             store.enqueue(payload)
         }
@@ -95,7 +96,7 @@ final class DiagnosticsEngine: @unchecked Sendable {
         let pending = store.drain()
         for data in pending {
             do {
-                try await client.sendDiagnostic(body: data)
+                try await sender.send(body: data)
             } catch {
                 store.enqueue(data)
             }
@@ -127,7 +128,7 @@ final class DiagnosticsEngine: @unchecked Sendable {
     ) -> Data {
         let crumbs = buffer.snapshot().map { BreadcrumbFormatter.render($0, relativeTo: occurredAt) }
         let meta = DeviceMeta.capture(sessionId: sessionId)
-        let tierValue: Any = LoopConfiguration.resolveTier(from: tierProvider) ?? NSNull()
+        let tierValue: Any = LoopOptions.resolveTier(from: tierProvider) ?? NSNull()
 
         var dict: [String: Any] = [
             "fingerprint": name,

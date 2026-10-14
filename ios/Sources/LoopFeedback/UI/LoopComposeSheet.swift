@@ -1,4 +1,5 @@
 #if os(iOS)
+import LoopCore
 import SwiftUI
 
 /// Compose screen — "NEW BUG" / "NEW FEATURE". Hand-rolled (no Form) so the

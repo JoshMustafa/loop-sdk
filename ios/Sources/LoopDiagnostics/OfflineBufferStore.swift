@@ -19,6 +19,9 @@ final class OfflineBufferStore: @unchecked Sendable {
 
     /// Default store location: an app-support subfolder. Falls back to the
     /// temporary directory if app-support is unavailable.
+    /// Kept from the original LoopSDK so payloads buffered before an upgrade still send.
+    static let defaultDirectoryName = "LoopSDKDiagnostics"
+
     static func makeDefault() -> OfflineBufferStore {
         let base = (try? FileManager.default.url(
             for: .applicationSupportDirectory,
@@ -26,7 +29,7 @@ final class OfflineBufferStore: @unchecked Sendable {
             appropriateFor: nil,
             create: true
         )) ?? FileManager.default.temporaryDirectory
-        return OfflineBufferStore(directory: base.appendingPathComponent("LoopSDKDiagnostics", isDirectory: true))
+        return OfflineBufferStore(directory: base.appendingPathComponent(defaultDirectoryName, isDirectory: true))
     }
 
     /// Persist a payload for later retry. Filenames are sortable by age so
