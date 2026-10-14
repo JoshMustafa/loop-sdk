@@ -48,15 +48,16 @@ final class DiagnosticsRuntime: @unchecked Sendable {
     let breadcrumbs = BreadcrumbBuffer()
     private let store = OfflineBufferStore.makeDefault()
     private let lock = NSLock()
-    private var cached: (apiKey: String, serverUrl: URL, engine: DiagnosticsEngine)?
+    private var cached: (configurationVersion: Int, engine: DiagnosticsEngine)?
 
-    /// Built on first use after `Loop.configure`; rebuilt if the key or server changes.
+    /// Built on first use after `Loop.configure`; rebuilt after every
+    /// `Loop.configure` so a new key, server or tier provider takes effect.
     func engine() -> DiagnosticsEngine? {
         let runtime = LoopRuntime.shared
+        let version = runtime.configurationVersion
         guard let configuration = runtime.configuration, let http = runtime.http() else { return nil }
         lock.lock(); defer { lock.unlock() }
-        if let cached, cached.apiKey == configuration.apiKey,
-           cached.serverUrl == configuration.options.serverUrl {
+        if let cached, cached.configurationVersion == version {
             return cached.engine
         }
         let engine = DiagnosticsEngine(
@@ -66,7 +67,7 @@ final class DiagnosticsRuntime: @unchecked Sendable {
             store: store,
             buffer: breadcrumbs
         )
-        cached = (configuration.apiKey, configuration.options.serverUrl, engine)
+        cached = (version, engine)
         return engine
     }
 }

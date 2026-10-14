@@ -2,7 +2,18 @@ import XCTest
 @testable import LoopCore
 
 final class LoopRuntimeTests: XCTestCase {
-    override func setUp() { LoopRuntime.shared.resetForTesting() }
+    private var store: ReporterStore!
+
+    override func setUp() {
+        store = ReporterStore(service: "io.loop.sdk.tests.\(UUID().uuidString)")
+        LoopRuntime.shared.resetForTesting(store: store)
+    }
+
+    override func tearDown() { store.reset() }
+
+    func test_reporter_id_comes_from_the_injected_store() {
+        XCTAssertEqual(Loop.reporterId, store.ensureId())
+    }
 
     func test_default_server_is_loop_analytics_api() {
         XCTAssertEqual(LoopOptions.defaultServerURL.absoluteString, "https://loop-analytics-api.fly.dev")

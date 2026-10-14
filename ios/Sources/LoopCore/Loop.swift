@@ -27,8 +27,9 @@ package final class LoopRuntime: @unchecked Sendable {
 
     private let lock = NSLock()
     private var _configuration: LoopConfigurationSnapshot?
-    private let store = ReporterStore()
+    private var store = ReporterStore()
     private var _reporterId: String?
+    private var _configurationVersion = 0
     private var _sessionId: String = LoopRuntime.makeSessionId()
 
     package var configuration: LoopConfigurationSnapshot? {
@@ -49,9 +50,17 @@ package final class LoopRuntime: @unchecked Sendable {
         return _sessionId
     }
 
+    /// Bumped by every `configure`, so modules that cache work built from the
+    /// configuration (e.g. the diagnostics engine) know when to rebuild it.
+    package var configurationVersion: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _configurationVersion
+    }
+
     package func configure(apiKey: String, options: LoopOptions) {
         lock.lock(); defer { lock.unlock() }
         _configuration = LoopConfigurationSnapshot(apiKey: apiKey, options: options)
+        _configurationVersion += 1
     }
 
     /// An authenticated client for the configured server, or nil before
@@ -62,11 +71,18 @@ package final class LoopRuntime: @unchecked Sendable {
                         reporterId: reporterId, session: session)
     }
 
-    /// Test hook: forget the configuration and start a new launch session.
-    package func resetForTesting() {
+    /// Test hook: forget the configuration, start a new launch session and,
+    /// optionally, read the reporter id from a throwaway Keychain store
+    /// instead of the real one.
+    package func resetForTesting(store: ReporterStore? = nil) {
         lock.lock(); defer { lock.unlock() }
         _configuration = nil
+        _configurationVersion += 1
         _sessionId = LoopRuntime.makeSessionId()
+        if let store {
+            self.store = store
+            _reporterId = nil
+        }
     }
 
     private static func makeSessionId() -> String {

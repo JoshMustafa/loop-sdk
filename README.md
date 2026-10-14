@@ -25,14 +25,16 @@ Modules never depend on each other, so an app that only wants feedback doesn't s
 
 ## Install
 
-**Swift Package Manager.** Add `https://github.com/JoshMustafa/loop-sdk` and tick the products you need (`LoopCore` plus `LoopFeedback` and/or `LoopDiagnostics`).
+Available from release `2.0.0` (the first release with the module split).
+
+**Swift Package Manager.** Add `https://github.com/JoshMustafa/loop-sdk` (from `2.0.0`) and tick the products you need (`LoopCore` plus `LoopFeedback` and/or `LoopDiagnostics`).
 
 **CocoaPods.** Installed straight from GitHub. Add the modules you use, plus `LoopCore`:
 
 ```ruby
-pod 'LoopCore',        :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => 'v0.1.0'
-pod 'LoopFeedback',    :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => 'v0.1.0'
-pod 'LoopDiagnostics', :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => 'v0.1.0'
+pod 'LoopCore',        :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => '2.0.0'
+pod 'LoopFeedback',    :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => '2.0.0'
+pod 'LoopDiagnostics', :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => '2.0.0'
 ```
 
 Requires iOS 16+.
@@ -67,7 +69,7 @@ LoopDiagnostics.capture("sync_failed", severity: .error, context: ["code": "504"
 
 Every report and diagnostic can carry an optional `user.tier` string that the dashboard shows as a pill (`Paid` / `Trial` / `Free`, or any custom value such as `pro`).
 
-**If your app uses RevenueCat, this works with no code.** `Loop.configure(apiKey:)` auto-detects RevenueCat through the Objective-C runtime (no build-time dependency) and sends `"paid"` when the user has an active entitlement, `"free"` otherwise.
+**If your app uses RevenueCat, this works with no code.** `Loop.configure(apiKey:)` auto-detects RevenueCat through the Objective-C runtime (no build-time dependency) and sends `"paid"` when the user has an active entitlement, `"free"` when RevenueCat reports none, and nothing while it cannot tell yet.
 
 To supply your own value, or turn it off:
 

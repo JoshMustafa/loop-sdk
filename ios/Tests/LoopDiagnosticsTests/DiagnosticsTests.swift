@@ -178,7 +178,7 @@ final class DiagnosticsTests: XCTestCase {
 
     func test_calls_before_configure_do_not_crash_or_send() async throws {
         // Must never crash or send if Loop.configure was never called.
-        LoopRuntime.shared.resetForTesting()
+        LoopRuntime.shared.resetForTesting(store: ReporterStore(service: "io.loop.sdk.tests.\(UUID().uuidString)"))
         XCTAssertNil(DiagnosticsRuntime.shared.engine())
         LoopDiagnostics.breadcrumb("no config yet")
         LoopDiagnostics.capture("NoConfig", severity: .warning)
@@ -288,5 +288,30 @@ final class CapturedRequest: @unchecked Sendable {
     var method: String?
     var auth: String?
     var reporter: String?
+}
+
+final class DiagnosticsRuntimeTests: XCTestCase {
+    private var store: ReporterStore!
+
+    override func setUp() {
+        store = ReporterStore(service: "io.loop.sdk.tests.\(UUID().uuidString)")
+        LoopRuntime.shared.resetForTesting(store: store)
+    }
+
+    override func tearDown() { store.reset() }
+
+    func test_reconfiguring_with_a_new_tier_provider_rebuilds_the_engine() throws {
+        Loop.configure(apiKey: "loop_pk_pebble_aabbccdd11223344", options: LoopOptions(tierProvider: { "free" }))
+        let first = try XCTUnwrap(DiagnosticsRuntime.shared.engine())
+        Loop.configure(apiKey: "loop_pk_pebble_aabbccdd11223344", options: LoopOptions(tierProvider: { "paid" }))
+        let second = try XCTUnwrap(DiagnosticsRuntime.shared.engine())
+        XCTAssertFalse(first === second)
+    }
+
+    func test_engine_is_reused_while_configuration_is_unchanged() throws {
+        Loop.configure(apiKey: "loop_pk_pebble_aabbccdd11223344")
+        let first = try XCTUnwrap(DiagnosticsRuntime.shared.engine())
+        XCTAssertTrue(first === DiagnosticsRuntime.shared.engine())
+    }
 }
 
