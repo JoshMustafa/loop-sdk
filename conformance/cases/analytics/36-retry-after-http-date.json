@@ -1,0 +1,13 @@
+{
+  "name": "Retry-After as an HTTP date pauses until that time",
+  "steps": [
+    {"op": "respond", "status": 503, "headers": {"Retry-After": "Thu, 01 Jan 2026 00:02:00 GMT"}},
+    {"op": "track", "name": "E1"},
+    {"op": "flush"},
+    {"op": "advance", "ms": 119999},
+    {"op": "check", "requests": 1},
+    {"op": "advance", "ms": 1},
+    {"op": "check", "requests": 2}
+  ],
+  "expect": {"queueLength": 0}
+}

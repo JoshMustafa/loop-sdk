@@ -1,0 +1,14 @@
+{
+  "name": "a Retry-After over an hour is capped at one hour",
+  "steps": [
+    {"op": "respond", "status": 429, "headers": {"Retry-After": "7200"}},
+    {"op": "track", "name": "E1"},
+    {"op": "flush"},
+    {"op": "check", "requests": 1, "queueLength": 1},
+    {"op": "advance", "ms": 3599999},
+    {"op": "check", "requests": 1},
+    {"op": "advance", "ms": 1},
+    {"op": "check", "requests": 2}
+  ],
+  "expect": {"queueLength": 0}
+}

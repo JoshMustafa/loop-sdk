@@ -7,7 +7,7 @@ import LoopCore
 /// the Dart reference runner is `loop-sdk-flutter/test/conformance_test.dart`.
 final class ConformanceTests: XCTestCase {
     /// Cases in the suite today; fewer loaded means the path is wrong.
-    static let minimumCaseCount = 28
+    static let minimumCaseCount = 39
 
     /// Cases this SDK is known to fail, by file name (without `.json`), with
     /// the reason. They stay in the suite and are skipped here only.
