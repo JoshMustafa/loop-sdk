@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Loop SDK conformance case",
+  "type": "object",
+  "required": ["name", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "options": { "$ref": "#/$defs/options" },
+    "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requests": { "type": "array" },
+        "queueLength": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "$defs": {
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "flushQueueSize": { "type": "integer", "minimum": 1 },
+        "flushIntervalMs": { "type": "integer", "minimum": 1 },
+        "minTimeBetweenSessionsMs": { "type": "integer", "minimum": 0 },
+        "maxQueueSize": { "type": "integer", "minimum": 1 },
+        "maxBatchSize": { "type": "integer", "minimum": 1 },
+        "legacyDeviceId": { "type": ["string", "null"] }
+      }
+    },
+    "props": { "type": "object" },
+    "step": {
+      "type": "object",
+      "required": ["op"],
+      "properties": {
+        "op": {
+          "enum": [
+            "track", "setUserId", "setUserProperties", "setPurchaserId", "flush", "reset",
+            "setOptOut", "advance", "lifecycle", "respond", "restart", "check"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "op": { "const": "track" } } },
+          "then": {
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "op": true,
+              "name": { "type": "string" },
+              "props": { "$ref": "#/$defs/props" },
+              "fill": {
+                "type": "object",
+                "required": ["key", "count"],
+                "additionalProperties": false,
+                "properties": {
+                  "key": { "type": "string" },
+                  "count": { "type": "integer", "minimum": 0 }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "op": { "const": "setUserId" } } },
+          "then": {
+            "required": ["userId"],
+            "additionalProperties": false,
+            "properties": { "op": true, "userId": { "type": ["string", "null"] } }
+          }
+        },
+        {
+          "if": { "properties": { "op": { "const": "setUserProperties" } } },
+          "then": {
+            "required": ["props"],
+            "additionalProperties": false,
+            "properties": { "op": true, "props": { "$ref": "#/$defs/props" } }
+          }
+        },
+        {
+          "if": { "properties": { "op": { "const": "setPurchaserId" } } },
+          "then": {
+            "required": ["purchaserId"],
+            "additionalProperties": false,
+            "properties": { "op": true, "purchaserId": { "type": ["string", "null"] } }
+          }
+        },
+        {
+          "if": { "properties": { "op": { "enum": ["flush", "reset"] } } },
+          "then": { "additionalProperties": false, "properties": { "op": true } }
+        },
+        {
+          "if": { "properties": { "op": { "const": "setOptOut" } } },
+          "then": {
+            "required": ["optOut"],
+            "additionalProperties": false,
+            "properties": { "op": true, "optOut": { "type": "boolean" } }
+          }
+        },
+        {
+          "if": { "properties": { "op": { "const": "advance" } } },
+          "then": {
+            "required": ["ms"],
+            "additionalProperties": false,
+            "properties": { "op": true, "ms": { "type": "integer", "minimum": 0 } }
+          }
+        },
+        {
+          "if": { "properties": { "op": { "const": "lifecycle" } } },
+          "then": {
+            "required": ["state"],
+            "additionalProperties": false,
+            "properties": { "op": true, "state": { "enum": ["foreground", "background"] } }
+          }
+        },
+        {
+          "if": { "properties": { "op": { "const": "respond" } } },
+          "then": {
+            "oneOf": [
+              {
+                "required": ["status"],
+                "additionalProperties": false,
+                "properties": {
+                  "op": true,
+                  "status": { "type": "integer", "minimum": 100, "maximum": 599 },
+                  "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+                  "body": { "type": "string" }
+                }
+              },
+              {
+                "required": ["error"],
+                "additionalProperties": false,
+                "properties": { "op": true, "error": { "const": "network" } }
+              }
+            ]
+          }
+        },
+        {
+          "if": { "properties": { "op": { "const": "restart" } } },
+          "then": {
+            "additionalProperties": false,
+            "properties": { "op": true, "options": { "$ref": "#/$defs/options" } }
+          }
+        },
+        {
+          "if": { "properties": { "op": { "const": "check" } } },
+          "then": {
+            "additionalProperties": false,
+            "properties": {
+              "op": true,
+              "requests": { "type": "integer", "minimum": 0 },
+              "queueLength": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

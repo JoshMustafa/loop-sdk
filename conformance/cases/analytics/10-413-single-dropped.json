@@ -1,0 +1,8 @@
+{
+  "name": "413 on a single event drops it",
+  "steps": [{"op": "respond", "status": 413}, {"op": "track", "name": "E1"}, {"op": "flush"}],
+  "expect": {
+    "requests": [{"$partial": true, "events": [{"$partial": true, "name": "E1"}]}],
+    "queueLength": 0
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "429 honours Retry-After",
+  "steps": [
+    {"op": "respond", "status": 429, "headers": {"Retry-After": "120"}},
+    {"op": "track", "name": "E1"},
+    {"op": "flush"},
+    {"op": "advance", "ms": 60000},
+    {"op": "check", "requests": 1},
+    {"op": "advance", "ms": 60000},
+    {"op": "check", "requests": 2}
+  ],
+  "expect": {"queueLength": 0}
+}

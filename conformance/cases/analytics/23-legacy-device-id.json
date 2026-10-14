@@ -1,0 +1,22 @@
+{
+  "name": "the legacy device id is adopted on first run and kept after",
+  "options": {"legacyDeviceId": "LEGACY-ID"},
+  "steps": [
+    {"op": "track", "name": "A"},
+    {"op": "restart", "options": {"legacyDeviceId": "OTHER"}},
+    {"op": "track", "name": "B"},
+    {"op": "flush"}
+  ],
+  "expect": {
+    "requests": [
+      {
+        "$partial": true,
+        "events": [{"$partial": true, "name": "A", "deviceId": "LEGACY-ID"}]
+      },
+      {
+        "$partial": true,
+        "events": [{"$partial": true, "name": "B", "deviceId": "LEGACY-ID"}]
+      }
+    ]
+  }
+}

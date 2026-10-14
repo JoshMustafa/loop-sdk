@@ -1,0 +1,11 @@
+{
+  "name": "the flush interval timer uploads queued events",
+  "steps": [
+    {"op": "track", "name": "E1"},
+    {"op": "advance", "ms": 29999},
+    {"op": "check", "requests": 0},
+    {"op": "advance", "ms": 1},
+    {"op": "check", "requests": 1}
+  ],
+  "expect": {"queueLength": 0}
+}

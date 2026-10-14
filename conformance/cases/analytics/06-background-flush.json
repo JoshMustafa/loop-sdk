@@ -1,0 +1,5 @@
+{
+  "name": "going to the background uploads",
+  "steps": [{"op": "track", "name": "E1"}, {"op": "lifecycle", "state": "background"}],
+  "expect": {"requests": [{"$partial": true, "events": [{"$partial": true, "name": "E1"}]}]}
+}

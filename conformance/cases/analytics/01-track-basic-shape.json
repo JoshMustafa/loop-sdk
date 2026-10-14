@@ -1,0 +1,48 @@
+{
+  "name": "track sends the full wire shape",
+  "steps": [
+    {
+      "op": "track",
+      "name": "Item Viewed",
+      "props": {"Index": 1, "Tags": ["a", "b"], "Nested": {"k": true}}
+    },
+    {"op": "flush"}
+  ],
+  "expect": {
+    "requests": [
+      {
+        "sentAt": "<iso8601>",
+        "context": {
+          "platform": "iOS",
+          "osName": "ios",
+          "osVersion": "18.0",
+          "appVersion": "1.0.0",
+          "appBuild": "1",
+          "deviceModel": "iPhone15,3",
+          "deviceManufacturer": "Apple",
+          "isTablet": false,
+          "locale": "en-GB",
+          "purchaserId": null,
+          "sdk": "<any>"
+        },
+        "events": [
+          {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "name": "Item Viewed",
+            "occurredAt": "2026-01-01T00:00:00.000Z",
+            "sessionId": 1767225600000,
+            "deviceId": "DEVICE-1R",
+            "userId": null,
+            "props": {
+              "Index": 1,
+              "Tags": ["a", "b"],
+              "Nested": {"k": true}
+            },
+            "userProps": {}
+          }
+        ]
+      }
+    ],
+    "queueLength": 0
+  }
+}

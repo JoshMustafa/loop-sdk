@@ -1,0 +1,19 @@
+{
+  "name": "opt-out drops new events and pauses uploads but keeps the queue, across restarts",
+  "options": {"flushQueueSize": 100},
+  "steps": [
+    {"op": "track", "name": "A"},
+    {"op": "setOptOut", "optOut": true},
+    {"op": "track", "name": "B"},
+    {"op": "flush"},
+    {"op": "check", "requests": 0, "queueLength": 1},
+    {"op": "restart"},
+    {"op": "track", "name": "C"},
+    {"op": "check", "requests": 0, "queueLength": 1},
+    {"op": "setOptOut", "optOut": false}
+  ],
+  "expect": {
+    "requests": [{"$partial": true, "events": [{"$partial": true, "name": "A"}]}],
+    "queueLength": 0
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "a network error keeps the events",
+  "steps": [{"op": "respond", "error": "network"}, {"op": "track", "name": "E1"}, {"op": "flush"}],
+  "expect": {
+    "requests": [{"$partial": true, "events": [{"$partial": true, "name": "E1"}]}],
+    "queueLength": 1
+  }
+}

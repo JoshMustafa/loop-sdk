@@ -1,0 +1,24 @@
+{
+  "name": "each event is sent with the context it was tracked under",
+  "steps": [
+    {"op": "setPurchaserId", "purchaserId": "p1"},
+    {"op": "track", "name": "A"},
+    {"op": "setPurchaserId", "purchaserId": "p2"},
+    {"op": "track", "name": "B"},
+    {"op": "flush"}
+  ],
+  "expect": {
+    "requests": [
+      {
+        "$partial": true,
+        "context": {"$partial": true, "purchaserId": "p1"},
+        "events": [{"$partial": true, "name": "A"}]
+      },
+      {
+        "$partial": true,
+        "context": {"$partial": true, "purchaserId": "p2"},
+        "events": [{"$partial": true, "name": "B"}]
+      }
+    ]
+  }
+}
