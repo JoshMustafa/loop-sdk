@@ -37,12 +37,12 @@ struct LoopSubmittedView: View {
 
                 VStack(spacing: 12) {
                     MonoCaps(
-                        text: String(localized: "Report sent · \(itemId)", bundle: .module),
+                        text: String(localized: "Report sent · \(itemId)", bundle: .loopFeedback),
                         size: 11,
                         kerning: 1.4
                     )
 
-                    Text("Thanks for the\nheads-up", bundle: .module)
+                    Text("Thanks for the\nheads-up", bundle: .loopFeedback)
                         .font(LoopFont.sf(32, .heavy))
                         .kerning(-0.8)
                         .multilineTextAlignment(.center)
@@ -50,7 +50,7 @@ struct LoopSubmittedView: View {
                         .foregroundStyle(LoopColors.text(dark: dark))
                         .lineSpacing(2)
 
-                    Text("The team's been pinged. You'll find your report on the board next to everyone else's.", bundle: .module)
+                    Text("The team's been pinged. You'll find your report on the board next to everyone else's.", bundle: .loopFeedback)
                         .font(LoopFont.sf(15))
                         .kerning(-0.2)
                         .multilineTextAlignment(.center)
@@ -71,7 +71,7 @@ struct LoopSubmittedView: View {
 
                 VStack(spacing: 8) {
                     Button(action: onSeeBoard) {
-                        Text("See the board", bundle: .module)
+                        Text("See the board", bundle: .loopFeedback)
                             .font(LoopFont.sf(16, .bold))
                             .kerning(-0.2)
                             .foregroundStyle(LoopColors.onInk(dark: dark))
@@ -82,7 +82,7 @@ struct LoopSubmittedView: View {
                     .buttonStyle(.plain)
 
                     Button(action: onFileAnother) {
-                        Text("File another", bundle: .module)
+                        Text("File another", bundle: .loopFeedback)
                             .font(LoopFont.sf(16, .semibold))
                             .kerning(-0.2)
                             .foregroundStyle(LoopColors.text(dark: dark))

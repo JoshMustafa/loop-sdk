@@ -83,16 +83,16 @@ extension LoopEmailPrompt: View {
     var body: some View {
         VStack(spacing: 10) {
             if phase == .sent {
-                Text("Check your inbox to confirm.", bundle: .module)
+                Text("Check your inbox to confirm.", bundle: .loopFeedback)
                     .font(LoopFont.sf(14))
                     .foregroundStyle(LoopColors.textSecondary(dark: dark))
                     .multilineTextAlignment(.center)
             } else {
-                Text("Want a reply by email?", bundle: .module)
+                Text("Want a reply by email?", bundle: .loopFeedback)
                     .font(LoopFont.sf(15, .semibold))
                     .foregroundStyle(LoopColors.text(dark: dark))
 
-                TextField(String(localized: "your@email.com", bundle: .module), text: $email)
+                TextField(String(localized: "your@email.com", bundle: .loopFeedback), text: $email)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
@@ -107,8 +107,8 @@ extension LoopEmailPrompt: View {
                     )
 
                 Button(action: send) {
-                    Text(phase == .sending ? String(localized: "Sending…", bundle: .module)
-                                           : String(localized: "Email me the reply", bundle: .module))
+                    Text(phase == .sending ? String(localized: "Sending…", bundle: .loopFeedback)
+                                           : String(localized: "Email me the reply", bundle: .loopFeedback))
                         .font(LoopFont.sf(16, .bold))
                         .foregroundStyle(LoopColors.onInk(dark: dark))
                         .frame(maxWidth: .infinity)
@@ -121,13 +121,13 @@ extension LoopEmailPrompt: View {
 
                 // The consent record. It must say what will be sent, and it must
                 // survive translation into all 16 locales.
-                Text("Only used to tell you when the developer replies. Unsubscribe any time.", bundle: .module)
+                Text("Only used to tell you when the developer replies. Unsubscribe any time.", bundle: .loopFeedback)
                     .font(LoopFont.sf(12))
                     .foregroundStyle(LoopColors.textSecondary(dark: dark))
                     .multilineTextAlignment(.center)
 
                 if phase == .failed {
-                    Text("That didn't send. You can try again.", bundle: .module)
+                    Text("That didn't send. You can try again.", bundle: .loopFeedback)
                         .font(LoopFont.sf(12))
                         .foregroundStyle(LoopColors.textSecondary(dark: dark))
                 }

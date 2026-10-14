@@ -2,195 +2,173 @@
 
 <img src="./loop-mark.svg" alt="Loop" width="96" height="96" />
 
-# LoopSDK · iOS
+# Loop SDK
 
-**Drop-in bug + feature reporter for iOS apps.**
+**Bug & feature reporting, diagnostics and product analytics for mobile apps.**
 
-Fully native SwiftUI (no WebView), survives offline, sends nothing personal, and adopts iOS 26 Liquid Glass automatically when the device supports it. Three lines of integration in your host app.
+Native SwiftUI on iOS (no WebView), survives offline, anonymous by default. Configure once, then pick the modules you need.
 
 </div>
 
 ---
 
-## What this repo is
+## Modules
 
-The **iOS SDK** for Loop — a Swift Package the host app embeds to give end-users a built-in "Report a bug or request a feature" surface. Submissions land in the [Loop backend](https://github.com/JoshMustafa/loop_backend); the developer triages them on the [Loop dashboard](https://github.com/JoshMustafa/loop-frontend).
+| Module | What it does | iOS | Android | Flutter |
+|---|---|---|---|---|
+| **LoopCore** | API key, ids, networking, device info. Every module depends on it. | ✅ | planned | (inside each plugin) |
+| **LoopFeedback** | Bug & feature reporter UI: lists, votes, replies, new reports, optional email | ✅ | later | later |
+| **LoopDiagnostics** | Breadcrumbs and captured problems | ✅ | later | later |
+| **LoopAnalytics** | Events, user id, user properties, sessions | next release | planned | planned |
 
-It is one of three repos that make up Loop:
-
-| Repo | What it does |
-|---|---|
-| [`loop-frontend`](https://github.com/JoshMustafa/loop-frontend) | Nuxt 4 dashboard the dev uses to triage bugs / features |
-| [`loop_backend`](https://github.com/JoshMustafa/loop_backend) | Phoenix/Elixir JSON API + Postgres |
-| **loop-sdk-ios** (this one) | Swift Package the host app drops in for in-app reporting |
-
-## At a glance
-
-- **Min iOS:** 16.0 (Liquid Glass styling auto-applies on iOS 26+)
-- **Swift tools:** 5.9+
-- **Distribution:** Swift Package Manager
-- **Dependencies:** none — Foundation, SwiftUI, UIKit, Security, Network only.
+Modules never depend on each other, so an app that only wants feedback doesn't ship analytics, and vice versa.
 
 ## Install
 
-In Xcode: *File → Add Package Dependencies…* and paste the repo URL, or
-add to your `Package.swift`:
+**Swift Package Manager.** Add `https://github.com/JoshMustafa/loop-sdk` and tick the products you need (`LoopCore` plus `LoopFeedback` and/or `LoopDiagnostics`).
 
-```swift
-.package(url: "https://github.com/JoshMustafa/loop-sdk-ios.git", from: "0.1.0"),
+**CocoaPods.** Installed straight from GitHub. Add the modules you use, plus `LoopCore`:
+
+```ruby
+pod 'LoopCore',        :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => 'v0.1.0'
+pod 'LoopFeedback',    :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => 'v0.1.0'
+pod 'LoopDiagnostics', :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => 'v0.1.0'
 ```
 
-Then add `"LoopSDK"` to your target's `dependencies`.
+Requires iOS 16+.
 
-## Use it
+## Quick start
 
 ```swift
-import LoopSDK
+import LoopCore
+import LoopFeedback
+import LoopDiagnostics
 
-@main
-struct YourApp: App {
-    init() {
-        // That's the whole config. The backend URL is baked into the SDK.
-        LoopSDK.start(apiKey: "loop_pk_yourapp_…")
-    }
-    // ...
-}
+// Once, at launch
+Loop.configure(apiKey: "loop_pk_…")
 
-// Anywhere in your settings:
-struct SettingsScreen: View {
-    @State private var presentingLoop = false
+// SwiftUI: show the reporter in a sheet
+.sheet(isPresented: $showingFeedback) { LoopFeedbackView() }
 
-    var body: some View {
-        Button("Report a bug or request a feature") {
-            presentingLoop = true
-        }
-        .fullScreenCover(isPresented: $presentingLoop) {
-            LoopReporterView()
-        }
-    }
-}
+// UIKit
+LoopFeedback.present(from: viewController)
+
+// Open straight on the compose form
+LoopComposerView(kind: .bug)
+
+// Diagnostics
+LoopDiagnostics.breadcrumb("Tapped sync")
+LoopDiagnostics.capture("sync_failed", severity: .error, context: ["code": "504"])
 ```
 
-That's it. Three lines of integration:
-
-1. `LoopSDK.start(apiKey:)` once at launch.
-2. `LoopReporterView()` in a `.fullScreenCover` (or `.sheet`, your call).
-3. (Optional) `LoopSDK.presentReporter(from:)` if you're driving from UIKit.
+`LoopDiagnostics` calls made before `Loop.configure` are safe: breadcrumbs are kept and captures are dropped. Presenting `LoopFeedbackView` before `Loop.configure` stops with a clear error, so a missing key shows up during integration rather than as silent failures.
 
 ### Tagging reports with the user's subscription tier
 
-Every report can carry an optional `user.tier` string that the dev
-dashboard renders as a coloured pill — handy for prioritising paying
-customers' bugs. The dashboard's pill is `Paid` / `Trial` / `Free` (with
-specific colours) for the canonical values, or whatever string you pass
-for custom tiers like `pro`, `founder`, `team`.
+Every report and diagnostic can carry an optional `user.tier` string that the dashboard shows as a pill (`Paid` / `Trial` / `Free`, or any custom value such as `pro`).
 
-**If your app uses RevenueCat, you get this for free.** The single-line
-`LoopSDK.start(apiKey:)` above already wires it up — the SDK auto-
-detects RevenueCat via the Objective-C runtime (no build-time
-dependency on RevenueCat, so apps that don't use it pay nothing) and
-emits `"paid"` whenever the user has any active entitlement, `"free"`
-otherwise.
+**If your app uses RevenueCat, this works with no code.** `Loop.configure(apiKey:)` auto-detects RevenueCat through the Objective-C runtime (no build-time dependency) and sends `"paid"` when the user has an active entitlement, `"free"` otherwise.
 
-**To override** (custom value space, StoreKit, your own backend), pass
-a closure:
+To supply your own value, or turn it off:
 
 ```swift
-LoopSDK.start(apiKey: "loop_pk_yourapp_…") {
-    // Any synchronous source of truth works.
+Loop.configure(apiKey: "loop_pk_…", options: LoopOptions(tierProvider: {
     Purchases.shared.cachedCustomerInfo?
         .entitlements.active.keys.contains("pro") == true ? "pro" : "free"
-}
+}))
+
+Loop.configure(apiKey: "loop_pk_…", options: LoopOptions(tierProvider: nil))
 ```
 
-**To disable tier reporting entirely**, pass `nil`:
+The provider is read on every send, must be cheap and non-blocking, and an empty value means "unknown". End users never see the tier.
 
-```swift
-LoopSDK.start(apiKey: "loop_pk_yourapp_…", tierProvider: nil)
-```
+## Migrating from `LoopSDK`
 
-Notes:
+The package was renamed from `LoopSDK` to `Loop` and split into modules.
 
-- The SDK reads the closure (or the auto-detector) **on every submit**,
-  so a downgrade or refund picks up automatically — no setter to
-  remember to call.
-- The read must be **cheap and non-blocking** (a cached property, not a
-  network round-trip).
-- Returning `nil`, an empty string, or whitespace is treated as
-  "tier unknown" — the report is filed with no tier attached.
-- **End-users never see the tier** in the report sheet. It's
-  dev-only metadata, only visible on the dashboard.
+| Before | Now |
+|---|---|
+| package `LoopSDK`, `import LoopSDK` | package `Loop`; `import LoopCore` + `LoopFeedback` and/or `LoopDiagnostics` |
+| `LoopSDK.start(apiKey:)` / `start(configuration:)` | `Loop.configure(apiKey:options:)` |
+| `LoopConfiguration` | `LoopOptions` |
+| `apiBase:` | `LoopOptions(serverUrl:)` (default `https://loop-analytics-api.fly.dev`) |
+| `LoopSDK.presentReporter(from:)` / `LoopReporterView()` | `LoopFeedback.present(from:)` / `LoopFeedbackView()` |
+| `LoopSDK.currentReporterId()` | `Loop.reporterId` |
+| `LoopSDK.breadcrumb` / `captureDiagnostic` | `LoopDiagnostics.breadcrumb` / `capture` |
+| `LoopSDK.track` / `identify` / `resetIdentity` | Removed. Use `LoopAnalytics` (next release). |
+| `LoopSDK.defineFunnel` | Removed. Funnels are built in the Loop Analytics dashboard. |
+
+Nothing is lost on upgrade: the reporter id (Keychain) and any diagnostics still waiting to send are picked up by the new modules.
 
 ## What the user sees
 
-- A list of every bug and feature filed against the project, segmented Bugs / Features.
-- Vote up/down on each item. Idempotent — voting twice doesn't double-count.
-- A "+" button to file a new report. The user picks Bug or Feature, types a title and a few sentences, hits **Send →**.
-- Live character-count hints under both fields so they know when the Send button will enable.
-- Everything else (device, OS, app version, locale, network type, session id) is captured automatically and attached to the submission.
+- Every bug and feature filed against the project, split into Bugs / Features.
+- Up/down votes on each item (voting twice doesn't double-count) and reply threads.
+- A "+" button to file a new report: pick Bug or Feature, add a title and a few sentences, send.
+- If the project has it switched on, an optional prompt after sending to leave an email for follow-up.
+- Device, OS, app version, locale, network type and a per-launch session id are attached automatically.
 
-## What the user *doesn't* see
+## What the user doesn't see
 
-- No login. No Apple ID. No name, no email, no PII.
-- Each device gets a stable anonymous id like `r_8af3bc9e1234`, generated on first launch and pinned in Keychain. The same id is sent on every call so the dev can recognise repeat reporters in the dashboard without knowing who they are.
+- No login and no Apple ID.
+- Each device gets a stable anonymous id like `r_8af3bc9e1234`, created on first use and kept in the Keychain (not synced to iCloud), so you can recognise repeat reporters without knowing who they are.
 
 ## Privacy disclosure (paste into your privacy policy)
 
-> This app uses Loop, a self-hosted bug and feature reporting tool, to let
-> you report issues. When you submit a report, Loop attaches your device
-> model, OS version, app version, locale, network type, and a per-launch
-> session id. Loop generates a random per-device id stored in your
-> device's Keychain so the developer can recognise repeat reports from
-> the same device. **No personal information is collected.**
+> This app uses Loop to let you report bugs and request features. When you
+> submit a report, Loop attaches your device model, OS version, app version,
+> locale, network type and a per-launch session id, plus a random per-device
+> id stored in your device's Keychain so the developer can recognise repeat
+> reports from the same device. If you choose to leave an email address
+> after sending a report, it is stored with that id so the developer can
+> reply. Loop does not track you across apps or websites.
 
 ## App Store review
 
-LoopSDK ships its own `PrivacyInfo.xcprivacy` declaring no tracking, no
-data collection beyond what the user explicitly types, and the one
-`UserDefaults` reason code (`CA92.1`) covering the Apple-required
-"app's own functionality" use case. You don't need to update your own
-privacy nutrition labels for the SDK.
+Each module ships its own `PrivacyInfo.xcprivacy`:
 
-There is no `ATTrackingManager` prompt anywhere. Loop never tracks across
-apps or websites.
+- **LoopCore**: no tracking, no collected data types, no required-reason APIs.
+- **LoopFeedback**: declares the optional email address (linked, not tracking, app functionality).
+- **LoopDiagnostics**: no manifest entries beyond Core's.
 
-## Architecture
+There is no `ATTrackingManager` prompt anywhere.
+
+## Endpoints
+
+Every request carries `Authorization: Bearer loop_pk_…` and `X-Loop-Reporter-Id: r_…`.
+
+| Module | Method | Path |
+|---|---|---|
+| Feedback | GET | `/api/ingest/project` |
+| Feedback | GET | `/api/ingest/bugs?limit=&cursor=` |
+| Feedback | GET | `/api/ingest/features?limit=&cursor=` |
+| Feedback | GET | `/api/ingest/items/:id` |
+| Feedback | POST | `/api/ingest/items/:id/vote` |
+| Feedback | POST | `/api/ingest/items/:id/replies` |
+| Feedback | POST | `/api/ingest/submissions` |
+| Feedback | POST | `/api/ingest/contact` |
+| Diagnostics | POST | `/api/ingest/events` |
+
+## Repository layout
 
 ```
-LoopSDK
-├── LoopClient      — actor, URLSession + async/await
-├── ReporterStore   — Keychain-backed r_xxx… id
-├── DeviceMeta      — model, OS, app, locale, network, session
-└── UI/             — SwiftUI views, Liquid Glass on iOS 26
-    ├── LoopReporterView    (public)
-    ├── LoopComposeSheet
-    ├── LoopSubmittedView
-    ├── LoopItemRow
-    └── LoopVoteControl
+Package.swift          SwiftPM manifest (sources under ios/)
+*.podspec              one podspec per module
+ios/Sources/           LoopCore, LoopFeedback, LoopDiagnostics
+ios/Tests/             one test target per module + shared LoopTestSupport
+ios/Examples/          minimal SwiftUI host app (see its README)
 ```
 
-Backend contract (`/api/ingest/*`):
-
-| Method | Path | Headers | Purpose |
-|---|---|---|---|
-| GET  | `/api/ingest/project` | Bearer + `X-Loop-Reporter-Id` | Project metadata for branding |
-| GET  | `/api/ingest/bugs?cursor=&limit=` | same | Paginated bug list (archived items are excluded server-side) |
-| GET  | `/api/ingest/features?cursor=&limit=` | same | Paginated feature list |
-| POST | `/api/ingest/items/:LP-####/vote` | same; body `{dir}` | Cast / clear vote |
-| POST | `/api/ingest/submissions` | Bearer | File a new report |
-
-## Local dev against the Phoenix backend
-
-See [`Examples/README.md`](./Examples/README.md) for a step-by-step walkthrough that runs the example host app against `http://localhost:4000` (or your Mac's LAN IP from an iPhone).
+Android (`android/`) and Flutter (`flutter/`) land in later releases, sharing one conformance suite so every platform behaves the same.
 
 ## Tests
 
-```sh
-swift test    # cross-platform pieces (Client, ReporterStore, DeviceMeta)
-xcodebuild -scheme LoopSDK -destination 'generic/platform=iOS Simulator' build
+```bash
+swift test
+xcodebuild -scheme Loop-Package -destination 'generic/platform=iOS Simulator' build
 ```
 
-UI is exercised manually via the example app; full UI test automation is out of scope for v1.
+The UI is tested by hand with the example app.
 
 ## License
 

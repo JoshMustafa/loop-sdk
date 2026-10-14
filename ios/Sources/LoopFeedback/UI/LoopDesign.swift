@@ -95,13 +95,13 @@ struct LoopStatusLabel: View {
 
     private var label: String {
         switch status {
-        case .open: return String(localized: "Open", bundle: .module)
-        case .planned: return String(localized: "Planned", bundle: .module)
-        case .inProgress: return String(localized: "In progress", bundle: .module)
-        case .triaged: return String(localized: "Triaged", bundle: .module)
-        case .resolved: return String(localized: "Resolved", bundle: .module)
-        case .shipped: return String(localized: "Shipped", bundle: .module)
-        case .wontFix: return String(localized: "Won't fix", bundle: .module)
+        case .open: return String(localized: "Open", bundle: .loopFeedback)
+        case .planned: return String(localized: "Planned", bundle: .loopFeedback)
+        case .inProgress: return String(localized: "In progress", bundle: .loopFeedback)
+        case .triaged: return String(localized: "Triaged", bundle: .loopFeedback)
+        case .resolved: return String(localized: "Resolved", bundle: .loopFeedback)
+        case .shipped: return String(localized: "Shipped", bundle: .loopFeedback)
+        case .wontFix: return String(localized: "Won't fix", bundle: .loopFeedback)
         case .other(let raw): return raw
         }
     }
@@ -131,8 +131,8 @@ struct LoopKindTag: View {
     var body: some View {
         let prefix = kind == .bug ? "×" : "+"
         let label = kind == .bug
-            ? String(localized: "Bug", bundle: .module)
-            : String(localized: "Feature", bundle: .module)
+            ? String(localized: "Bug", bundle: .loopFeedback)
+            : String(localized: "Feature", bundle: .loopFeedback)
         let fg = kind == .bug ? LoopColors.text(dark: dark).opacity(0.85) : LoopColors.textSecondary(dark: dark)
         let border = kind == .bug
             ? (dark ? Color.white.opacity(0.18) : Color.black.opacity(0.16))

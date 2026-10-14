@@ -67,7 +67,7 @@ final class LoopReporterModel: ObservableObject {
         } catch let error as LoopError {
             projectState = .failed(humanise(error))
         } catch {
-            projectState = .failed(String(localized: "Couldn't reach Loop.", bundle: .module))
+            projectState = .failed(String(localized: "Couldn't reach Loop.", bundle: .loopFeedback))
         }
     }
 
@@ -337,26 +337,26 @@ final class LoopReporterModel: ObservableObject {
         if let err = error as? LoopError {
             switch err {
             case .invalidApiKey:
-                return String(localized: "Loop SDK isn't configured correctly.", bundle: .module)
+                return String(localized: "Loop SDK isn't configured correctly.", bundle: .loopFeedback)
             case .badRequest(let m):
-                return m ?? String(localized: "That didn't go through. Try again.", bundle: .module)
+                return m ?? String(localized: "That didn't go through. Try again.", bundle: .loopFeedback)
             case .notFound:
-                return String(localized: "Couldn't find that report.", bundle: .module)
+                return String(localized: "Couldn't find that report.", bundle: .loopFeedback)
             case .serverError:
-                return String(localized: "Loop is having trouble — try again in a moment.", bundle: .module)
+                return String(localized: "Loop is having trouble — try again in a moment.", bundle: .loopFeedback)
             case .transport(.notConnectedToInternet),
                  .transport(.networkConnectionLost):
-                return String(localized: "You're offline.", bundle: .module)
+                return String(localized: "You're offline.", bundle: .loopFeedback)
             case .transport(.timedOut):
-                return String(localized: "Loop took too long to respond.", bundle: .module)
+                return String(localized: "Loop took too long to respond.", bundle: .loopFeedback)
             case .transport(.cancelled):
-                return String(localized: "Cancelled.", bundle: .module)
+                return String(localized: "Cancelled.", bundle: .loopFeedback)
             case .transport:
-                return String(localized: "Network problem.", bundle: .module)
+                return String(localized: "Network problem.", bundle: .loopFeedback)
             case .decoding:
-                return String(localized: "Got an unexpected response from Loop.", bundle: .module)
+                return String(localized: "Got an unexpected response from Loop.", bundle: .loopFeedback)
             case .unknown:
-                return String(localized: "Something went wrong.", bundle: .module)
+                return String(localized: "Something went wrong.", bundle: .loopFeedback)
             }
         }
         return error.localizedDescription

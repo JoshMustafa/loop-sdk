@@ -46,7 +46,7 @@ struct LoopVoteControl: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            Text(direction == .up ? "Vote up" : "Vote down", bundle: .module)
+            Text(direction == .up ? "Vote up" : "Vote down", bundle: .loopFeedback)
         )
     }
 }

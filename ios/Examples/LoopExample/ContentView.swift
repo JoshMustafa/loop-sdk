@@ -1,5 +1,6 @@
 import SwiftUI
-import LoopSDK
+import LoopCore
+import LoopFeedback
 
 struct ContentView: View {
     @State private var presentingLoop = false
@@ -19,14 +20,14 @@ struct ContentView: View {
                         Label("Report a bug or request a feature", systemImage: "ladybug")
                     }
 
-                    Text("Reporter id: \(LoopSDK.currentReporterId())")
+                    Text("Reporter id: \(Loop.reporterId)")
                         .font(.footnote.monospaced())
                         .foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("Settings")
             .sheet(isPresented: $presentingLoop) {
-                LoopReporterView()
+                LoopFeedbackView()
             }
         }
     }
