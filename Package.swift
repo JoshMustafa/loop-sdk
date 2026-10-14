@@ -14,7 +14,8 @@ let package = Package(
         .target(
             name: "LoopCore",
             path: "ios/Sources/LoopCore",
-            resources: [.process("PrivacyInfo.xcprivacy")]
+            resources: [.process("PrivacyInfo.xcprivacy")],
+            linkerSettings: [.linkedLibrary("z")]
         ),
         .target(
             name: "LoopFeedback",

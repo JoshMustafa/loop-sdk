@@ -55,15 +55,21 @@ package struct DeviceMeta: Sendable {
         // The real model identifier comes from `utsname.machine`, e.g.
         // "iPhone15,2" → we map known ones to friendly names, otherwise
         // fall back to the raw identifier.
-        var sys = utsname()
-        uname(&sys)
-        let raw = withUnsafePointer(to: &sys.machine) { ptr -> String in
-            ptr.withMemoryRebound(to: CChar.self, capacity: 1) { String(cString: $0) }
-        }
+        let raw = machineIdentifier()
         return Self.friendlyDeviceName(for: raw) ?? raw
         #else
         return ProcessInfo.processInfo.hostName
         #endif
+    }
+
+    /// The raw `utsname.machine` value, e.g. `"iPhone15,2"` (or the host
+    /// architecture such as `"arm64"` on the simulator and macOS).
+    static func machineIdentifier() -> String {
+        var sys = utsname()
+        uname(&sys)
+        return withUnsafePointer(to: &sys.machine) { ptr -> String in
+            ptr.withMemoryRebound(to: CChar.self, capacity: 1) { String(cString: $0) }
+        }
     }
 
     static func osName() -> String {

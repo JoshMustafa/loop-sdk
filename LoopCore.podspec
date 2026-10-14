@@ -10,5 +10,6 @@ Pod::Spec.new do |s|
   s.ios.deployment_target = '16.0'
   s.pod_target_xcconfig = { 'OTHER_SWIFT_FLAGS' => '-package-name Loop' }
   s.source_files  = 'ios/Sources/LoopCore/**/*.swift'
+  s.libraries     = 'z'
   s.resource_bundles = { 'LoopCore' => ['ios/Sources/LoopCore/PrivacyInfo.xcprivacy'] }
 end
