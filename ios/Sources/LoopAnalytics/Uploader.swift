@@ -69,6 +69,8 @@ actor Uploader {
     static let authBackoffMillis: Int64 = 3_600_000
     /// Upper bound on how long a `Retry-After` can pause uploads.
     static let maxRetryAfterMillis: Int64 = 3_600_000
+    /// How long one request may take before it counts as a network error.
+    static let defaultRequestTimeout: Duration = .seconds(30)
 
     private let store: EventStore
     private let transport: AnalyticsTransport
@@ -79,6 +81,7 @@ actor Uploader {
     private let maxBodyBytes: Int
     private let clock: LoopClock
     private let isEnabled: @Sendable () async -> Bool
+    private let requestTimeout: Duration
     private let encoder = JSONEncoder()
 
     private var batchLimit: Int
@@ -99,7 +102,8 @@ actor Uploader {
         maxBatchSize: Int,
         maxBodyBytes: Int = Uploader.defaultMaxBodyBytes,
         clock: LoopClock,
-        isEnabled: @escaping @Sendable () async -> Bool = { true }
+        isEnabled: @escaping @Sendable () async -> Bool = { true },
+        requestTimeout: Duration = Uploader.defaultRequestTimeout
     ) {
         self.store = store
         self.transport = transport
@@ -110,6 +114,7 @@ actor Uploader {
         self.maxBodyBytes = maxBodyBytes
         self.clock = clock
         self.isEnabled = isEnabled
+        self.requestTimeout = requestTimeout
         self.batchLimit = max(1, maxBatchSize)
     }
 
@@ -156,7 +161,8 @@ actor Uploader {
         let status: Int
         let headers: [String: String]
         do {
-            (status, headers, _) = try await transport.send(try await request(for: batch))
+            let request = try await request(for: batch)
+            (status, headers, _) = try await Self.send(request, via: transport, timeout: requestTimeout)
         } catch {
             scheduleRetry(retryAfter: nil)
             return false
@@ -196,6 +202,66 @@ actor Uploader {
         await store.remove(ids: Self.ids(batch))
         pending = nil
         return true
+    }
+
+    /// `transport.send(request)`, or `URLError(.timedOut)` once `timeout`
+    /// passes. The loser is cancelled, but nothing waits for it, so a
+    /// transport that ignores cancellation cannot hold up the uploader.
+    private static func send(
+        _ request: URLRequest,
+        via transport: AnalyticsTransport,
+        timeout: Duration
+    ) async throws -> (Int, [String: String], Data) {
+        try await withCheckedThrowingContinuation { continuation in
+            let race = Race(continuation)
+            race.add(Task {
+                do {
+                    race.finish(.success(try await transport.send(request)))
+                } catch {
+                    race.finish(.failure(error))
+                }
+            })
+            race.add(Task {
+                // A cancelled sleep means the request already finished.
+                guard (try? await Task.sleep(for: timeout)) != nil else { return }
+                race.finish(.failure(URLError(.timedOut)))
+            })
+        }
+    }
+
+    /// Resumes a continuation exactly once, with whichever side finishes
+    /// first, then cancels every task in the race.
+    private final class Race: @unchecked Sendable {
+        typealias Reply = (Int, [String: String], Data)
+
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<Reply, Error>?
+        private var tasks: [Task<Void, Never>] = []
+
+        init(_ continuation: CheckedContinuation<Reply, Error>) {
+            self.continuation = continuation
+        }
+
+        /// Adds a racer; cancels it at once if the race is already over.
+        func add(_ task: Task<Void, Never>) {
+            lock.lock()
+            let over = continuation == nil
+            if !over { tasks.append(task) }
+            lock.unlock()
+            if over { task.cancel() }
+        }
+
+        func finish(_ result: Result<Reply, Error>) {
+            lock.lock()
+            let winner = continuation
+            continuation = nil
+            let losers = tasks
+            tasks = []
+            lock.unlock()
+            guard let winner else { return }
+            winner.resume(with: result)
+            for task in losers { task.cancel() }
+        }
     }
 
     private struct Body: Encodable {

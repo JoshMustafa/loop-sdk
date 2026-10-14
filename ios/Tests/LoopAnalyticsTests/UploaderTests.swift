@@ -59,6 +59,22 @@ actor FakeTransport: AnalyticsTransport {
     }
 }
 
+/// A transport whose requests never return and ignore cancellation.
+actor HangingTransport: AnalyticsTransport {
+    private var hung: [CheckedContinuation<Reply, Never>] = []
+    var calls: Int { hung.count }
+
+    func send(_ request: URLRequest) async throws -> (Int, [String: String], Data) {
+        await withCheckedContinuation { hung.append($0) }
+    }
+
+    /// Lets the hung requests finish so the test leaves nothing suspended.
+    func release() {
+        for continuation in hung { continuation.resume(returning: reply(202)) }
+        hung = []
+    }
+}
+
 final class Toggle: @unchecked Sendable {
     var on = true
 }
@@ -219,6 +235,7 @@ final class UploaderTests: XCTestCase {
         XCTAssertEqual(Uploader.maxRetryAfterMillis, 3_600_000)
         XCTAssertEqual(Uploader.endpointPath, "api/ingest/analytics/batch")
         XCTAssertEqual(URLSessionTransport.requestTimeout, 30)
+        XCTAssertEqual(Uploader.defaultRequestTimeout, .seconds(30))
     }
 
     // MARK: - 413
@@ -540,7 +557,32 @@ final class UploaderTests: XCTestCase {
         XCTAssertEqual(next, clock.now + 30 * second)
     }
 
-    func test_a_timed_out_request_is_retried_later() async {
+    func test_a_hung_request_times_out_and_is_retried_later() async {
+        await addEvents(1)
+        let hanging = HangingTransport()
+        let up = Uploader(
+            store: store,
+            transport: hanging,
+            serverUrl: URL(string: "https://loop.test")!,
+            apiKey: "k",
+            context: { ["platform": .string("ios")] },
+            maxBatchSize: 100,
+            clock: clock,
+            requestTimeout: .milliseconds(10)
+        )
+        await up.flush()
+        let calls = await hanging.calls
+        XCTAssertEqual(calls, 1)
+        let count = await store.count
+        XCTAssertEqual(count, 1)
+        let next = await up.nextAttemptAt
+        XCTAssertNotNil(next)
+        let uploading = await up.isUploading
+        XCTAssertFalse(uploading)
+        await hanging.release()
+    }
+
+    func test_a_transport_reported_timeout_is_retried_later() async {
         // URLSessionTransport surfaces its 30 s timeout as URLError.timedOut.
         await addEvents(1)
         let up = uploader()
