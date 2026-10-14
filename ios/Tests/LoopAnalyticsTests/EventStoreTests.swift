@@ -149,6 +149,17 @@ final class EventStoreTests: XCTestCase {
         XCTAssertEqual(reloaded, ["b"])
     }
 
+    func test_rewrites_leave_the_right_content_and_no_temp_files() async throws {
+        let store = await open(max: 25)
+        for i in 1...26 { await store.add(.sample(id: "e\(i)")) } // drop-20 rewrite
+        await store.remove(ids: ["e21"])                           // remove rewrite
+        await store.add(.sample(id: "e27"))                         // append after rewrite
+        let lines = try fileLines()
+        let decoded = try lines.map { try LoopEvent(storageJSON: JSONDecoder().decode(JSONObject.self, from: Data($0.utf8))).id }
+        XCTAssertEqual(decoded, ["e22", "e23", "e24", "e25", "e26", "e27"])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), ["events.jsonl"])
+    }
+
     func test_events_added_during_a_remove_are_not_lost() async {
         let store = await open()
         await store.add(.sample(id: "a"))

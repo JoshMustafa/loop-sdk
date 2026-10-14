@@ -96,6 +96,22 @@ final class SanitizeTests: XCTestCase {
         XCTAssertEqual(out["list"], .array([.int(7), .null]))
     }
 
+    func test_json_value_input_is_sanitised_like_any_other_value() {
+        XCTAssertEqual(
+            Sanitize.props(["o": JSONValue.object(["a": .null, "b": .int(1)])]),
+            ["o": .object(["b": .int(1)])]
+        )
+        let out = Sanitize.props([
+            "list": JSONValue.array([.null, .number(.nan), .object(["gone": .null, "deep": .array([.null])])]),
+            "inf": JSONValue.number(.infinity),
+            "null": JSONValue.null,
+        ])
+        XCTAssertEqual(out, [
+            "list": .array([.null, .string("nan"), .object(["deep": .array([.null])])]),
+            "inf": .string("inf"),
+        ])
+    }
+
     func test_infinite_numbers_are_stringified() {
         let out = Sanitize.props(["inf": Double.infinity, "ninf": -Double.infinity, "f": Float.nan])
         XCTAssertEqual(out["inf"], .string("inf"))

@@ -9,8 +9,8 @@ import Foundation
 ///   most once per `dropBatch` events) and the file is rewritten. The file is
 ///   also rewritten after every `remove` and compacted if it grows past twice
 ///   the cap; opening keeps only the newest `maxQueueSize` lines.
-/// * Rewrites are atomic (temp file + rename), so a crash never leaves a
-///   half-written queue.
+/// * Rewrites go through a synced temp file and a rename, so a crash or power
+///   cut never leaves a half-written or empty queue.
 /// * Corrupt or truncated lines are skipped on load.
 /// * With a nil `fileURL` the queue lives in memory only.
 actor EventStore {
@@ -136,12 +136,44 @@ actor EventStore {
             data.append(UInt8(ascii: "\n"))
         }
         do {
-            try createDirectory(for: fileURL)
-            try data.write(to: fileURL, options: .atomic)
+            try replaceDurably(fileURL, with: data)
             fileLines = entries.count
             needsRewrite = false
         } catch {
             needsRewrite = true
+        }
+    }
+
+    /// Writes `data` to a temp file beside `file`, syncs it to disk, then
+    /// renames it over `file`, so a crash or power cut leaves either the old
+    /// queue or the new one, never an empty or partial file.
+    private func replaceDurably(_ file: URL, with data: Data) throws {
+        try createDirectory(for: file)
+        let directory = file.deletingLastPathComponent()
+        // A fixed name: a temp file left by a crash is simply overwritten.
+        let temp = directory.appendingPathComponent(file.lastPathComponent + ".tmp")
+        guard FileManager.default.createFile(atPath: temp.path, contents: nil) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        do {
+            let handle = try FileHandle(forWritingTo: temp)
+            defer { try? handle.close() }
+            try handle.write(contentsOf: data)
+            try handle.synchronize()
+        } catch {
+            try? FileManager.default.removeItem(at: temp)
+            throw error
+        }
+        guard rename(temp.path, file.path) == 0 else {
+            let code = POSIXErrorCode(rawValue: errno) ?? .EIO
+            try? FileManager.default.removeItem(at: temp)
+            throw POSIXError(code)
+        }
+        // Make the rename itself durable.
+        let fd = open(directory.path, O_RDONLY)
+        if fd >= 0 {
+            fsync(fd)
+            close(fd)
         }
     }
 

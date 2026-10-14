@@ -44,7 +44,7 @@ enum Sanitize {
 
         switch value {
         case let json as JSONValue:
-            return json
+            return sanitizeJSON(json)
         case let string as String:
             return .string(string)
         case let bool as Bool:
@@ -78,6 +78,24 @@ enum Sanitize {
                 return .array(mirror.children.map { sanitize($0.value) })
             }
             return .string(String(describing: value))
+        }
+    }
+
+    /// A `JSONValue` under the same rules: nulls stripped from objects (kept
+    /// in arrays), non-finite numbers stringified.
+    private static func sanitizeJSON(_ json: JSONValue) -> JSONValue {
+        switch json {
+        case .number(let double):
+            return double.isFinite ? json : .string("\(double)")
+        case .array(let array):
+            return .array(array.map(sanitizeJSON))
+        case .object(let object):
+            return .object(object.compactMapValues { value in
+                let sanitized = sanitizeJSON(value)
+                return sanitized == .null ? nil : sanitized
+            })
+        case .string, .int, .bool, .null:
+            return json
         }
     }
 
