@@ -143,21 +143,39 @@ actor Uploader {
         await inFlight?.value
     }
 
+    /// Fixes the next batch now, from the store as it is, unless one is
+    /// already pending or uploads are disabled. The next upload sends exactly
+    /// this batch, whatever is added meanwhile; at startup that keeps a batch
+    /// resent after a kill identical, so server-side dedup still applies.
+    func primePendingBatch() async {
+        guard pending == nil, await isEnabled() else { return }
+        _ = await takeNextBatch()
+    }
+
     private func drain() async {
         while await isEnabled(), !isBackingOff {
             let batch: [LoopEvent]
             if let pending {
                 batch = pending
             } else {
-                let events = await store.peek(batchLimit)
-                guard !events.isEmpty, await isEnabled() else { break }
-                batch = fitToBodyLimit(Self.sameContextPrefix(events))
-                pending = batch
+                guard let next = await takeNextBatch() else { break }
+                batch = next
             }
             if !(await upload(batch)) { break }
         }
         if await store.count == 0 { batchLimit = maxBatchSize }
         inFlight = nil
+    }
+
+    /// The oldest queued events that fit one batch, remembered as `pending`
+    /// until acknowledged; nil when the queue is empty or uploads are
+    /// disabled.
+    private func takeNextBatch() async -> [LoopEvent]? {
+        let events = await store.peek(batchLimit)
+        guard !events.isEmpty, await isEnabled() else { return nil }
+        let batch = fitToBodyLimit(Self.sameContextPrefix(events))
+        pending = batch
+        return batch
     }
 
     /// Sends one batch and applies the outcome. Returns whether draining

@@ -472,6 +472,28 @@ final class UploaderTests: XCTestCase {
         XCTAssertEqual(count, 0)
     }
 
+    func test_a_primed_batch_is_sent_first_and_unchanged() async {
+        await addEvents(2)
+        let up = uploader()
+        await up.primePendingBatch()
+        await addEvents(2, prefix: "late")
+        await up.flush()
+        let sent = await sent()
+        XCTAssertEqual(sent.map(\.ids), [["e0", "e1"], ["late0", "late1"]])
+    }
+
+    func test_priming_does_nothing_while_disabled() async {
+        await addEvents(2)
+        enabled.on = false
+        let up = uploader()
+        await up.primePendingBatch()
+        await addEvents(1, prefix: "late")
+        enabled.on = true
+        await up.flush()
+        let sent = await sent()
+        XCTAssertEqual(sent.map(\.ids), [["e0", "e1", "late0"]])
+    }
+
     func test_backoff_is_capped_at_10_minutes() async {
         await addEvents(1)
         let up = uploader()

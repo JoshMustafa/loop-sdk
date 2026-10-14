@@ -357,6 +357,28 @@ final class LoopAnalyticsTests: XCTestCase {
         XCTAssertEqual(second, first)
     }
 
+    func test_the_startup_batch_is_exactly_the_events_on_disk_even_if_the_app_tracks_at_once() async throws {
+        // The startup batch must not depend on whether the app's first
+        // track() beats the startup upload: a batch resent after a kill has
+        // to be the same event set, or server-side dedup misses it. Repeated
+        // because the old behaviour lost only some of the races.
+        for run in 0..<25 {
+            let h = try await harness(options { $0.flushQueueSize = 100 })
+            await h.engine.track("Old 1", nil)
+            await h.engine.track("Old 2", nil)
+
+            let h2 = try await restart(h)
+            await h2.engine.track("New", nil)
+            await h2.engine.waitUntilIdle()
+
+            let batches = h2.transport.requests.map { $0.events.compactMap { event -> String? in
+                if case .string(let name)? = event["name"] { return name } else { return nil }
+            } }
+            XCTAssertEqual(batches.first, ["Old 1", "Old 2"], "run \(run): \(batches)")
+            if batches.first != ["Old 1", "Old 2"] { return }
+        }
+    }
+
     // MARK: - Engine: wire shape
 
     func test_sends_exactly_the_wire_contract_body_gzip_encoded() async throws {

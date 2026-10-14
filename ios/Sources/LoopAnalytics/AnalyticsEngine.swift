@@ -94,7 +94,12 @@ actor AnalyticsEngine {
             work.spawn { await self.onTick() }
         }
         publish()
-        if await store.count > 0 { flushInBackground() }
+        if await store.count > 0 {
+            // Fixed before init returns, so the app's first track() cannot
+            // join the batch left from the previous run.
+            await uploader.primePendingBatch()
+            flushInBackground()
+        }
     }
 
     // MARK: - State
