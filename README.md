@@ -80,7 +80,7 @@ LoopAnalytics.setUserProperties(["Plan": "annual"])    // nil value removes a pr
 LoopAnalytics.setPurchaserId(revenueCatAppUserID)
 ```
 
-Every call returns at once, runs in the order it was made and never throws into the app. Also available: `await LoopAnalytics.flush()`, `await LoopAnalytics.reset()` (new device id, no user id, user properties or purchaser id, new session), `LoopAnalytics.setOptOut(_:)`, and the read-only `LoopAnalytics.deviceId` and `LoopAnalytics.sessionId`.
+The fire-and-forget calls return at once; `flush()` and `reset()` are async. All calls run in the order they were made and never throw into the app. Also available: `await LoopAnalytics.flush()`, `await LoopAnalytics.reset()` (new device id, no user id, user properties or purchaser id, new session), `LoopAnalytics.setOptOut(_:)`, and the read-only `LoopAnalytics.deviceId` and `LoopAnalytics.sessionId`.
 
 `LoopAnalyticsOptions` (all optional):
 
@@ -93,6 +93,14 @@ Every call returns at once, runs in the order it was made and never throws into 
 | `maxBatchSize` | `100` | Most events sent in one request |
 | `legacyDeviceId` | `nil` | A device id to adopt on first run, so anonymous users from a previous analytics SDK carry over |
 
+Pass only the options you want to change:
+
+```swift
+LoopAnalytics.start(options: .init(legacyDeviceId: previousSdkDeviceId))
+```
+
+When migrating from another analytics SDK, passing its device id as `legacyDeviceId` keeps your existing anonymous users: on first run the device keeps the id it already had instead of counting as a new one.
+
 How it behaves:
 
 - Events are queued on disk and uploaded in gzip batches of up to 100. An upload happens at 30 queued events, every 30 s, when the app goes to the background or returns to the foreground, at startup, and when opting back in.
@@ -101,7 +109,7 @@ How it behaves:
 - A session ends after 5 minutes idle; there is no timeout while the app is in the foreground.
 - `setOptOut(true)` drops new events and stops uploads; events already queued are kept and uploaded after opting back in.
 - Calls made before `Loop.configure` are dropped. Options passed to `start` before then are kept and applied once configured. Calling `Loop.configure` a second time logs a warning, and analytics keeps the key it started with.
-- Safe to link into app extensions. Inside an extension the app is treated as always in the foreground and no background task is used.
+- Safe to link into app extensions. Inside an extension the app is treated as always in the foreground and no background task is used. An app extension that links LoopAnalytics reports as a separate device with its own queue unless the app shares storage through an app group; app groups are not supported in 2.0.0.
 
 ### Tagging reports with the user's subscription tier
 
