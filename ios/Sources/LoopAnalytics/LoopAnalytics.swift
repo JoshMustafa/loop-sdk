@@ -19,7 +19,23 @@ public struct LoopAnalyticsOptions: Sendable {
     /// Ignored once a device id is stored, and after `reset()`.
     public var legacyDeviceId: String? = nil
 
-    public init() {}
+    /// Any option left out keeps its default, so `LoopAnalyticsOptions()`
+    /// is all defaults and `.init(legacyDeviceId: id)` changes only that.
+    public init(
+        flushQueueSize: Int = 30,
+        flushInterval: TimeInterval = 30,
+        minTimeBetweenSessions: TimeInterval = 300,
+        maxQueueSize: Int = 1000,
+        maxBatchSize: Int = 100,
+        legacyDeviceId: String? = nil
+    ) {
+        self.flushQueueSize = flushQueueSize
+        self.flushInterval = flushInterval
+        self.minTimeBetweenSessions = minTimeBetweenSessions
+        self.maxQueueSize = maxQueueSize
+        self.maxBatchSize = maxBatchSize
+        self.legacyDeviceId = legacyDeviceId
+    }
 }
 
 /// Product analytics for Loop.

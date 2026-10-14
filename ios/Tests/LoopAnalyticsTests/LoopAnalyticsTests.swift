@@ -117,6 +117,42 @@ final class LoopAnalyticsTests: XCTestCase {
         XCTAssertEqual(h.scheduler.intervals, [60_000])
     }
 
+    func test_options_initializer_takes_any_option_and_defaults_the_rest() {
+        let all = LoopAnalyticsOptions(
+            flushQueueSize: 5,
+            flushInterval: 10,
+            minTimeBetweenSessions: 60,
+            maxQueueSize: 200,
+            maxBatchSize: 50,
+            legacyDeviceId: "legacy-1"
+        )
+        XCTAssertEqual(all.flushQueueSize, 5)
+        XCTAssertEqual(all.flushInterval, 10)
+        XCTAssertEqual(all.minTimeBetweenSessions, 60)
+        XCTAssertEqual(all.maxQueueSize, 200)
+        XCTAssertEqual(all.maxBatchSize, 50)
+        XCTAssertEqual(all.legacyDeviceId, "legacy-1")
+
+        for options in [LoopAnalyticsOptions(legacyDeviceId: "legacy-1"), LoopAnalyticsOptions()] {
+            XCTAssertEqual(options.flushQueueSize, 30)
+            XCTAssertEqual(options.flushInterval, 30)
+            XCTAssertEqual(options.minTimeBetweenSessions, 300)
+            XCTAssertEqual(options.maxQueueSize, 1000)
+            XCTAssertEqual(options.maxBatchSize, 100)
+        }
+        XCTAssertNil(LoopAnalyticsOptions().legacyDeviceId)
+    }
+
+    func test_start_with_an_inline_legacy_device_id() async throws {
+        _ = try await facadeHarness()
+        configure()
+        LoopAnalytics.start(options: .init(legacyDeviceId: "legacy-2"))
+        LoopAnalytics.track("A")
+        await LoopAnalytics.flush()
+
+        XCTAssertEqual(LoopAnalytics.deviceId, "legacy-2")
+    }
+
     func test_start_before_configure_keeps_its_options_for_the_engine() async throws {
         _ = try await facadeHarness()
         LoopAnalytics.start(options: options { $0.legacyDeviceId = "legacy-1" })
