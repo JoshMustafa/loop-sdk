@@ -138,6 +138,11 @@ actor Uploader {
         await task.value
     }
 
+    /// Waits for the upload in flight, if any, without starting one.
+    func waitForInFlight() async {
+        await inFlight?.value
+    }
+
     private func drain() async {
         while await isEnabled(), !isBackingOff {
             let batch: [LoopEvent]
@@ -178,6 +183,7 @@ actor Uploader {
         if status == 413 {
             if batch.count == 1 {
                 // Still too large on its own: drop it.
+                Log.analytics.warning("Dropped an event the server rejected as too large (HTTP 413)")
                 await store.remove(ids: Self.ids(batch))
                 pending = nil
                 batchLimit = maxBatchSize
@@ -190,6 +196,7 @@ actor Uploader {
         }
         if status == 401 || status == 403 {
             // A wrong or not-yet-configured key: keep the events until it's fixed.
+            Log.analytics.error("Analytics upload refused (HTTP \(status)): check the Loop API key. Events stay queued; retrying later")
             scheduleRetry(retryAfter: retryAfter(headers), backoff: Self.authBackoffMillis)
             return false
         }
@@ -199,6 +206,7 @@ actor Uploader {
             return false
         }
         // Any other 4xx would never succeed.
+        Log.analytics.error("Dropped \(batch.count) event(s) the server rejected (HTTP \(status))")
         await store.remove(ids: Self.ids(batch))
         pending = nil
         return true
