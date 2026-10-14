@@ -1,5 +1,5 @@
 import XCTest
-@testable import LoopSDK
+@testable import LoopCore
 
 final class ReporterIdTests: XCTestCase {
     func test_generate_produces_well_formed_id() {
@@ -59,5 +59,12 @@ final class ReporterStoreTests: XCTestCase {
         let firstFromA = a.ensureId()
         let firstFromB = b.ensureId()
         XCTAssertEqual(firstFromA, firstFromB)
+    }
+}
+
+final class ReporterStoreUpgradeTests: XCTestCase {
+    func test_keychain_location_is_unchanged_for_upgrades() {
+        XCTAssertEqual(ReporterStore.defaultService, "io.loop.sdk")
+        XCTAssertEqual(ReporterStore.defaultAccount, "reporter_id")
     }
 }

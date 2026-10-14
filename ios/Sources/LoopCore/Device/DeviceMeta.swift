@@ -9,15 +9,15 @@ import Network
 /// Best-effort device metadata captured at submission time. Never throws,
 /// never blocks, never collects PII. Each field has a benign default if the
 /// platform can't supply it.
-public struct DeviceMeta: Sendable {
-    public let device: String
-    public let os: String
-    public let appVersion: String
-    public let locale: String
-    public let network: String
-    public let sessionId: String
+package struct DeviceMeta: Sendable {
+    package let device: String
+    package let os: String
+    package let appVersion: String
+    package let locale: String
+    package let network: String
+    package let sessionId: String
 
-    public init(
+    package init(
         device: String,
         os: String,
         appVersion: String,
@@ -36,7 +36,7 @@ public struct DeviceMeta: Sendable {
     /// Snapshot the current environment. `sessionId` is generated once per
     /// SDK launch (see `LoopSDK.shared`); this initializer accepts it
     /// rather than reading shared state, so the function stays pure.
-    public static func capture(sessionId: String) -> DeviceMeta {
+    package static func capture(sessionId: String) -> DeviceMeta {
         DeviceMeta(
             device: deviceName(),
             os: osName(),

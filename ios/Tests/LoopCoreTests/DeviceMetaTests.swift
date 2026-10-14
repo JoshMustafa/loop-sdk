@@ -1,5 +1,5 @@
 import XCTest
-@testable import LoopSDK
+@testable import LoopCore
 
 final class DeviceMetaTests: XCTestCase {
 

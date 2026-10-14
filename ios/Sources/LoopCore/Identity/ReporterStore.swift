@@ -7,23 +7,23 @@ import Security
 /// device's first unlock. We deliberately use a class-level lock around
 /// `SecItem*` calls because the underlying APIs are global state and we
 /// don't want a torn read on first launch.
-public final class ReporterStore: @unchecked Sendable {
+package final class ReporterStore: @unchecked Sendable {
     /// Default service identifier for the Keychain entry.
-    public static let defaultService = "io.loop.sdk"
-    public static let defaultAccount = "reporter_id"
+    package static let defaultService = "io.loop.sdk"
+    package static let defaultAccount = "reporter_id"
 
     private let service: String
     private let account: String
     private let lock = NSLock()
 
-    public init(service: String = ReporterStore.defaultService,
+    package init(service: String = ReporterStore.defaultService,
                 account: String = ReporterStore.defaultAccount) {
         self.service = service
         self.account = account
     }
 
     /// Returns the persisted id, generating + storing one on first call.
-    public func ensureId() -> String {
+    package func ensureId() -> String {
         lock.lock()
         defer { lock.unlock() }
 
@@ -39,7 +39,7 @@ public final class ReporterStore: @unchecked Sendable {
     }
 
     /// Test-only / reset support. Removes the persisted id.
-    public func reset() {
+    package func reset() {
         lock.lock()
         defer { lock.unlock() }
         let query: [String: Any] = [

@@ -15,10 +15,10 @@ import Foundation
 /// Adding a new detector: implement a function returning `String?`
 /// (cheap, non-blocking, nil-on-absence), then append it to
 /// `detectors` below.
-enum AutoTier {
+package enum AutoTier {
     /// Returns the first non-nil detector's result, or nil if none
     /// recognise the host's subscription source.
-    static func resolve() -> String? {
+    package static func resolve() -> String? {
         for detect in detectors {
             if let tier = detect() {
                 return tier

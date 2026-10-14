@@ -1,6 +1,6 @@
 import Foundation
 
-/// Typed errors surfaced by `LoopClient`. The host app should handle
+/// Typed errors surfaced by Loop modules. The host app should handle
 /// `.invalidApiKey` distinctly during integration; everything else is
 /// either transient network noise or a backend issue.
 public enum LoopError: Error, Sendable, Equatable {
