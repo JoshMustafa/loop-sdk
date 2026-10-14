@@ -9,6 +9,7 @@ let package = Package(
         .library(name: "LoopCore", targets: ["LoopCore"]),
         .library(name: "LoopFeedback", targets: ["LoopFeedback"]),
         .library(name: "LoopDiagnostics", targets: ["LoopDiagnostics"]),
+        .library(name: "LoopAnalytics", targets: ["LoopAnalytics"]),
     ],
     targets: [
         .target(
@@ -31,9 +32,16 @@ let package = Package(
             dependencies: ["LoopCore"],
             path: "ios/Sources/LoopDiagnostics"
         ),
+        .target(
+            name: "LoopAnalytics",
+            dependencies: ["LoopCore"],
+            path: "ios/Sources/LoopAnalytics",
+            resources: [.process("PrivacyInfo.xcprivacy")]
+        ),
         .target(name: "LoopTestSupport", path: "ios/Tests/LoopTestSupport"),
         .testTarget(name: "LoopCoreTests", dependencies: ["LoopCore", "LoopTestSupport"], path: "ios/Tests/LoopCoreTests"),
         .testTarget(name: "LoopFeedbackTests", dependencies: ["LoopFeedback", "LoopTestSupport"], path: "ios/Tests/LoopFeedbackTests"),
         .testTarget(name: "LoopDiagnosticsTests", dependencies: ["LoopDiagnostics", "LoopTestSupport"], path: "ios/Tests/LoopDiagnosticsTests"),
+        .testTarget(name: "LoopAnalyticsTests", dependencies: ["LoopAnalytics", "LoopTestSupport"], path: "ios/Tests/LoopAnalyticsTests"),
     ]
 )
