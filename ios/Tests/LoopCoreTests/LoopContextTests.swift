@@ -33,4 +33,20 @@ final class LoopContextTests: XCTestCase {
         XCTAssertFalse(withCalendar!.contains("_"), "got \(withCalendar!)")
         XCTAssertTrue(withCalendar!.hasPrefix("en-GB"), "got \(withCalendar!)")
     }
+
+    func test_locale_tag_keeps_only_language_script_and_region() {
+        let cases: [(String, String)] = [
+            ("en_GB", "en-GB"),
+            ("en_GB@calendar=buddhist", "en-GB"),
+            ("en_US@rg=gbzzzz", "en-US"),
+            ("zh-Hant-TW", "zh-Hant-TW"),
+            ("sr_Latn", "sr-Latn"),
+            ("es_419", "es-419"),
+            ("fr", "fr"),
+            ("ca_ES_VALENCIA", "ca-ES"),
+        ]
+        for (identifier, expected) in cases {
+            XCTAssertEqual(LoopContext.localeTag(Locale(identifier: identifier)), expected, identifier)
+        }
+    }
 }

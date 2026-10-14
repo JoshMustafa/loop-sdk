@@ -100,9 +100,32 @@ package struct LoopContext: Equatable, Sendable {
         return out
     }
 
-    /// The BCP 47 tag for `locale`, e.g. `en-GB`.
+    /// A BCP 47 tag holding only language, optional script and optional
+    /// region, e.g. `en-GB` or `zh-Hant-TW`. Keywords (`@calendar=…`,
+    /// `-u-…`), variants and private-use parts are dropped.
+    ///
+    /// The script appears only when the locale's identifier names it.
+    /// Foundation already drops a default script on creation
+    /// (`Locale(identifier: "zh_Hant_TW").identifier == "zh_TW"`), so that
+    /// locale gives `zh-TW`.
     static func localeTag(_ locale: Locale) -> String? {
-        nonEmpty(locale.identifier(.bcp47))
+        let base = locale.identifier.prefix { $0 != "@" }
+        var subtags = base.split(whereSeparator: { $0 == "_" || $0 == "-" })[...]
+        guard let language = subtags.popFirst(),
+              (2...8).contains(language.count), language.allSatisfy(\.isLetter)
+        else { return nil }
+
+        var tag = [language.lowercased()]
+        if let script = subtags.first, script.count == 4, script.allSatisfy(\.isLetter) {
+            tag.append(script.prefix(1).uppercased() + script.dropFirst().lowercased())
+            subtags = subtags.dropFirst()
+        }
+        if let region = subtags.first,
+           (region.count == 2 && region.allSatisfy(\.isLetter))
+            || (region.count == 3 && region.allSatisfy(\.isNumber)) {
+            tag.append(region.uppercased())
+        }
+        return tag.joined(separator: "-")
     }
 
     private static func nonEmpty(_ s: String?) -> String? {
