@@ -266,6 +266,25 @@ final class UploaderTests: XCTestCase {
         XCTAssertEqual(count, 0)
     }
 
+    func test_the_batch_limit_returns_to_maxBatchSize_once_a_413_halved_queue_drains() async {
+        await addEvents(100)
+        let up = uploader()
+        await respond { s, _ in
+            s.events.count > 25 ? reply(413, #"{"error":"too large"}"#) : reply(202)
+        }
+        await up.flush()
+        var count = await store.count
+        XCTAssertEqual(count, 0)
+
+        await addEvents(150, prefix: "more")
+        await respond(202)
+        await up.flush()
+        let sent = await sent()
+        XCTAssertEqual(sent.dropFirst(6).map(\.events.count), [100, 50])
+        count = await store.count
+        XCTAssertEqual(count, 0)
+    }
+
     // MARK: - Other 4xx
 
     func test_other_4xx_drops_the_batch_and_carries_on() async {
@@ -340,6 +359,15 @@ final class UploaderTests: XCTestCase {
         await up.flush()
         let next = await up.nextAttemptAt
         XCTAssertEqual(next, clock.now + 5 * minute)
+    }
+
+    func test_401_Retry_After_over_an_hour_is_capped_at_an_hour() async {
+        await addEvents(1)
+        let up = uploader()
+        await respond(401, "", headers: ["retry-after": "7200"])
+        await up.flush()
+        let next = await up.nextAttemptAt
+        XCTAssertEqual(next, clock.now + hour)
     }
 
     func test_the_queue_cap_still_applies_while_the_key_is_wrong() async {
