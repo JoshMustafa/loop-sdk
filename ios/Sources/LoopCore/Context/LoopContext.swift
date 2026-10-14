@@ -52,7 +52,7 @@ package struct LoopContext: Equatable, Sendable {
         let info = bundle.infoDictionary
         let appVersion = nonEmpty(info?["CFBundleShortVersionString"] as? String)
         let appBuild = nonEmpty(info?["CFBundleVersion"] as? String)
-        let locale = nonEmpty(Locale.current.identifier.replacingOccurrences(of: "_", with: "-"))
+        let locale = localeTag(.current)
 
         #if os(iOS)
         let model = nonEmpty(ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"])
@@ -98,6 +98,11 @@ package struct LoopContext: Equatable, Sendable {
         out["purchaserId"] = purchaserId ?? NSNull()
         out["sdk"] = ["name": sdk.name, "version": sdk.version]
         return out
+    }
+
+    /// The BCP 47 tag for `locale`, e.g. `en-GB`.
+    static func localeTag(_ locale: Locale) -> String? {
+        nonEmpty(locale.identifier(.bcp47))
     }
 
     private static func nonEmpty(_ s: String?) -> String? {

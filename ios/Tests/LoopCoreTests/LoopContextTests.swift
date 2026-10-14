@@ -24,4 +24,13 @@ final class LoopContextTests: XCTestCase {
         XCTAssertNotNil(ctx.locale)
         XCTAssertFalse(ctx.locale!.contains("_"), "BCP 47 uses '-' not '_'")
     }
+
+    func test_locale_tag_is_bcp47() {
+        XCTAssertEqual(LoopContext.localeTag(Locale(identifier: "en_GB")), "en-GB")
+        let withCalendar = LoopContext.localeTag(Locale(identifier: "en_GB@calendar=buddhist"))
+        XCTAssertNotNil(withCalendar)
+        XCTAssertFalse(withCalendar!.contains("@"), "got \(withCalendar!)")
+        XCTAssertFalse(withCalendar!.contains("_"), "got \(withCalendar!)")
+        XCTAssertTrue(withCalendar!.hasPrefix("en-GB"), "got \(withCalendar!)")
+    }
 }
