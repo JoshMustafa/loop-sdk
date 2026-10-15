@@ -25,6 +25,8 @@ import java.io.BufferedInputStream
 import java.io.Closeable
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -860,6 +862,45 @@ class UploaderTest {
     }
 
     @Test
+    fun HttpUrlConnectionTransport_reuses_the_connection_for_the_next_request() = runTest {
+        // Against real sockets: reading each response (error bodies too) to
+        // the end and closing it leaves the connection reusable. (The JVM's
+        // HttpURLConnection keeps it even after disconnect(); Android's does
+        // not, which the fake-connection test below covers.)
+        var index = 0
+        LocalHttpServer(keepAlive = true) {
+            index += 1
+            if (index == 2) {
+                LocalHttpServer.Response(503, emptyList(), """{"error":"busy"}""".toByteArray(Charsets.UTF_8))
+            } else {
+                LocalHttpServer.Response(202, emptyList(), """{"accepted":1,"dropped":0}""".toByteArray(Charsets.UTF_8))
+            }
+        }.use { server ->
+            val transport = HttpUrlConnectionTransport(timeoutMillis = 5_000)
+            val url = "http://127.0.0.1:${server.port}/batch"
+            val statuses = List(3) { transport.send(url, emptyMap(), ByteArray(1)).status }
+            assertEquals(listOf(202, 503, 202), statuses)
+            assertEquals("one connection for all three requests", 1, server.connections)
+        }
+    }
+
+    @Test
+    fun HttpUrlConnectionTransport_reads_each_response_to_the_end_and_never_disconnects() = runTest {
+        // On Android, disconnect() closes the socket, so every batch would pay
+        // for a new TLS handshake. Draining and closing the stream instead
+        // returns the connection to the keep-alive pool.
+        for (status in listOf(202, 503)) {
+            val connection = FakeConnection(status, """{"n":1}""".toByteArray(Charsets.UTF_8))
+            val response = HttpUrlConnectionTransport(open = { connection }).send("https://loop.test/batch", emptyMap(), ByteArray(1))
+            assertEquals(status, response.status)
+            assertEquals("""{"n":1}""", String(response.body, Charsets.UTF_8))
+            assertFalse("$status: disconnect() is not called", connection.disconnected)
+            assertTrue("$status: the body is read to the end", connection.body.readToEnd)
+            assertTrue("$status: the body stream is closed", connection.body.closed)
+        }
+    }
+
+    @Test
     fun HttpUrlConnectionTransport_throws_a_SocketTimeoutException_when_the_server_does_not_answer() = runTest {
         val release = CountDownLatch(1)
         LocalHttpServer {
@@ -879,19 +920,70 @@ class UploaderTest {
     }
 }
 
+/** An [HttpURLConnection] answering [status] with [responseBody], recording how it is used. */
+private class FakeConnection(private val status: Int, responseBody: ByteArray) :
+    HttpURLConnection(java.net.URL("https://loop.test/batch")) {
+    class Body(bytes: ByteArray) : java.io.ByteArrayInputStream(bytes) {
+        var readToEnd = false
+        var closed = false
+
+        override fun read(): Int = super.read().also { if (it < 0) readToEnd = true }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int =
+            super.read(b, off, len).also { if (it < 0) readToEnd = true }
+
+        override fun close() {
+            closed = true
+        }
+    }
+
+    val body = Body(responseBody)
+    var disconnected = false
+
+    override fun connect() {}
+
+    override fun disconnect() {
+        disconnected = true
+    }
+
+    override fun usingProxy(): Boolean = false
+
+    override fun getOutputStream(): java.io.OutputStream = java.io.ByteArrayOutputStream()
+
+    override fun getResponseCode(): Int = status
+
+    override fun getHeaderFields(): Map<String?, List<String>> = mapOf(null to listOf("HTTP/1.1 $status"))
+
+    override fun getInputStream(): InputStream {
+        if (status >= 400) throw IOException("HTTP $status")
+        return body
+    }
+
+    override fun getErrorStream(): InputStream? = if (status >= 400) body else null
+}
+
 /**
  * A one-connection-at-a-time HTTP/1.1 server on the loopback interface, for
  * testing [HttpUrlConnectionTransport] against real sockets. (The JDK's
  * `com.sun.net.httpserver` is not on the Android unit-test compile classpath.)
+ * With [keepAlive], it serves every request a client sends on a connection
+ * until the client closes it; otherwise it closes each after one response.
  */
-private class LocalHttpServer(private val handle: (Request) -> Response) : Closeable {
+private class LocalHttpServer(
+    private val keepAlive: Boolean = false,
+    private val handle: (Request) -> Response,
+) : Closeable {
     /** A received request; header names are lower-cased. */
     class Request(val method: String, val path: String, val headers: Map<String, String>, val body: ByteArray)
 
     class Response(val status: Int, val headers: List<Pair<String, String>>, val body: ByteArray)
 
     private val socket = ServerSocket(0, 50, InetAddress.getLoopbackAddress())
+    private val accepted = AtomicInteger()
     val port: Int get() = socket.localPort
+
+    /** Connections accepted so far. */
+    val connections: Int get() = accepted.get()
 
     init {
         thread(isDaemon = true, name = "LocalHttpServer") {
@@ -901,8 +993,12 @@ private class LocalHttpServer(private val handle: (Request) -> Response) : Close
                 } catch (_: IOException) {
                     break
                 }
+                accepted.incrementAndGet()
                 try {
-                    client.use { serve(it) }
+                    client.use {
+                        val input = BufferedInputStream(it.getInputStream())
+                        do serve(it, input) while (keepAlive)
+                    }
                 } catch (_: IOException) {
                     // The client went away (e.g. it timed out); serve the next one.
                 }
@@ -910,8 +1006,7 @@ private class LocalHttpServer(private val handle: (Request) -> Response) : Close
         }
     }
 
-    private fun serve(client: Socket) {
-        val input = BufferedInputStream(client.getInputStream())
+    private fun serve(client: Socket, input: BufferedInputStream) {
         val requestLine = readLine(input).split(" ")
         val headers = LinkedHashMap<String, String>()
         while (true) {
@@ -931,7 +1026,8 @@ private class LocalHttpServer(private val handle: (Request) -> Response) : Close
         val response = handle(Request(requestLine[0], requestLine[1], headers, body))
         val head = StringBuilder("HTTP/1.1 ${response.status} Status\r\n")
         for ((name, value) in response.headers) head.append("$name: $value\r\n")
-        head.append("Content-Length: ${response.body.size}\r\nConnection: close\r\n\r\n")
+        head.append("Content-Length: ${response.body.size}\r\n")
+        head.append(if (keepAlive) "\r\n" else "Connection: close\r\n\r\n")
         val output = client.getOutputStream()
         output.write(head.toString().toByteArray(Charsets.ISO_8859_1))
         output.write(response.body)

@@ -5,6 +5,7 @@ import kotlinx.coroutines.withContext
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLConnection
 import java.util.Locale
 
 /**
@@ -29,10 +30,12 @@ internal data class TransportResponse(
  */
 internal class HttpUrlConnectionTransport(
     val timeoutMillis: Int = DEFAULT_TIMEOUT_MILLIS,
+    /** Opens the connection; a test seam. */
+    private val open: (URL) -> URLConnection = { it.openConnection() },
 ) : AnalyticsTransport {
     override suspend fun send(url: String, headers: Map<String, String>, body: ByteArray): TransportResponse =
         withContext(Dispatchers.IO) {
-            val connection = URL(url).openConnection() as HttpURLConnection
+            val connection = open(URL(url)) as HttpURLConnection
             try {
                 connection.requestMethod = "POST"
                 connection.connectTimeout = timeoutMillis
@@ -52,11 +55,16 @@ internal class HttpUrlConnectionTransport(
                     if (name == null) continue
                     responseHeaders[name.lowercase(Locale.ROOT)] = values.joinToString(", ")
                 }
+                // Read to the end and closed, but never disconnect()ed: that
+                // returns the connection to the keep-alive pool, so the next
+                // batch skips a new TCP and TLS handshake.
                 val stream: InputStream? = if (status >= 400) connection.errorStream else connection.inputStream
                 val responseBody = stream?.use { it.readBytes() } ?: ByteArray(0)
                 TransportResponse(status, responseHeaders, responseBody)
-            } finally {
+            } catch (e: Exception) {
+                // A failed connection is not reused; release it now.
                 connection.disconnect()
+                throw e
             }
         }
 
