@@ -81,6 +81,16 @@ class AndroidPlatformTest {
     // Production environment
 
     @Test
+    fun the_library_manifest_requests_the_INTERNET_permission() {
+        // Merged into the app's manifest, so an app that does not ask for it still uploads.
+        @Suppress("DEPRECATION")
+        val requested = app.packageManager
+            .getPackageInfo(app.packageName, android.content.pm.PackageManager.GET_PERMISSIONS)
+            .requestedPermissions.orEmpty()
+        assertTrue(requested.toList().toString(), "android.permission.INTERNET" in requested)
+    }
+
+    @Test
     fun production_environment_uses_no_backup_storage_and_the_io_loop_analytics_preferences() {
         val environment = AnalyticsEnvironment.production(app)
 

@@ -174,7 +174,10 @@ internal class Uploader(
             send(requestBody(batch))
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
-            null
+            // The class name only: an exception's message can name the host.
+            val delay = scheduleRetry(retryAfter = null)
+            Log.warning("Analytics upload failed (${e.javaClass.name}); retrying in ${delay / 1000} s")
+            return false
         }
         if (response == null) {
             scheduleRetry(retryAfter = null)
@@ -282,13 +285,15 @@ internal class Uploader(
         0
     }
 
-    private fun scheduleRetry(retryAfter: Long?, backoff: Long? = null) {
+    /** Pauses uploads after a failure; returns the pause in ms. */
+    private fun scheduleRetry(retryAfter: Long?, backoff: Long? = null): Long {
         failures += 1
         val exponential = INITIAL_BACKOFF_MILLIS shl minOf(failures - 1, 10)
         var delay = retryAfter ?: backoff ?: minOf(exponential, MAX_BACKOFF_MILLIS)
         delay = minOf(delay, MAX_RETRY_AFTER_MILLIS)
         delay = maxOf(delay, 0L)
         nextAttemptAtMillis = clock.nowMillis() + delay
+        return delay
     }
 
     /** The `Retry-After` delay in ms (delta-seconds or an HTTP date), or null when absent or unparseable. */

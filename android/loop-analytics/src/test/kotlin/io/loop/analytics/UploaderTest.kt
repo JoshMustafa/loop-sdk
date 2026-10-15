@@ -671,6 +671,44 @@ class UploaderTest {
         assertNotNull(up.nextAttemptAtMillis)
     }
 
+    @Test
+    fun a_transport_failure_logs_one_warning_with_the_error_class_and_no_host() = runTest {
+        addEvents(1)
+        val up = uploader(serverUrl = "https://private-host.loop.test")
+        respond { _, _ -> throw java.net.UnknownHostException("private-host.loop.test: nodename nor servname provided") }
+        val log = LogRecorder()
+        try {
+            up.flush()
+        } finally {
+            log.stop()
+        }
+        assertEquals(
+            listOf("Analytics upload failed (java.net.UnknownHostException); retrying in 30 s"),
+            log.messages(Log.Level.WARNING),
+        )
+        val everything = Log.Level.values().flatMap { log.messages(it) }
+        assertTrue(everything.toString(), everything.none { it.contains("loop.test") || it.contains("nodename") })
+    }
+
+    @Test
+    fun the_retry_warning_reports_the_backed_off_delay() = runTest {
+        addEvents(1)
+        val up = uploader()
+        respond { _, _ -> throw IOException("connection reset") }
+        up.flush() // 30 s
+        clock.now += 30 * second
+        val log = LogRecorder()
+        try {
+            up.flush() // the second failure doubles the pause
+        } finally {
+            log.stop()
+        }
+        assertEquals(
+            listOf("Analytics upload failed (java.io.IOException); retrying in 60 s"),
+            log.messages(Log.Level.WARNING),
+        )
+    }
+
     // Concurrency and opt-out
 
     @Test
