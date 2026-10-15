@@ -43,10 +43,12 @@ kotlin {
 dependencies {
     api(project(":loop-core"))
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.lifecycle.process)
 
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
 }
 
 publishing {
