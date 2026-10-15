@@ -377,6 +377,35 @@ class LoopAnalyticsTest {
         runtime.waitForPendingCalls()
     }
 
+    @Test
+    fun a_failed_engine_start_is_retried_by_the_next_call_and_warned_about_once() = blockingTest {
+        val log = recordLog()
+        val h = harness(startEngine = false)
+        Loop.resetForTesting()
+        val attempts = AtomicInteger()
+        LoopAnalytics.resetForTesting {
+            if (attempts.incrementAndGet() <= 2) throw IllegalStateException("disk full") else h.environment()
+        }
+        configure()
+
+        LoopAnalytics.track("A") // the start fails; A is dropped
+        AnalyticsRuntime.shared.waitForPendingCalls()
+        assertNull(LoopAnalytics.deviceId)
+        LoopAnalytics.track("B") // tries again and fails again; B is dropped
+        AnalyticsRuntime.shared.waitForPendingCalls()
+        LoopAnalytics.track("C") // tries again and starts
+        LoopAnalytics.flush()
+
+        assertEquals(3, attempts.get())
+        assertEquals(listOf("C"), h.transport.sentNames)
+        assertEquals("DEVICE-1R", LoopAnalytics.deviceId)
+        assertEquals(
+            listOf("LoopAnalytics could not start (java.lang.IllegalStateException); the next call tries again"),
+            log.messages(Log.Level.WARNING),
+        )
+        assertEquals(emptyList<String>(), log.messages(Log.Level.ERROR))
+    }
+
     /** Calls [name] on `LoopAnalytics` as Java would: no Kotlin null checks at the call site. */
     private fun callFromJava(name: String, parameterTypes: Array<Class<*>>, vararg args: Any?) {
         try {

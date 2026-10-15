@@ -277,6 +277,9 @@ internal class AnalyticsRuntime {
     /** Builds the next engine's environment. Guarded by [lock]. */
     private var makeEnvironment: (LoopConfiguration) -> AnalyticsEnvironment = PRODUCTION_ENVIRONMENT
 
+    /** Whether the current run of failed engine starts was logged. Only touched on [AnalyticsThread]. */
+    private var warnedAboutStartFailure = false
+
     init {
         // The consumer reports its own end below, so its handler only keeps
         // an Error away from the app's uncaught-exception handler.
@@ -375,12 +378,24 @@ internal class AnalyticsRuntime {
         // Queued first, so every call queued after it finds the engine built.
         val create = Operation(
             run = {
-                slot.engine = AnalyticsEngine.create(
-                    apiKey = configuration.apiKey,
-                    serverUrl = configuration.options.serverUrl,
-                    options = options,
-                    environment = makeEnvironment(configuration),
-                )
+                try {
+                    slot.engine = AnalyticsEngine.create(
+                        apiKey = configuration.apiKey,
+                        serverUrl = configuration.options.serverUrl,
+                        options = options,
+                        environment = makeEnvironment(configuration),
+                    )
+                    warnedAboutStartFailure = false
+                } catch (e: Exception) {
+                    currentCoroutineContext().ensureActive()
+                    // Calls already queued for this slot are dropped; the
+                    // next call makes a new slot and tries again.
+                    synchronized(lock) { if (this.slot === slot) this.slot = null }
+                    if (!warnedAboutStartFailure) {
+                        warnedAboutStartFailure = true
+                        Log.warning("LoopAnalytics could not start (${e.javaClass.name}); the next call tries again")
+                    }
+                }
             },
             onDropped = {},
         )
