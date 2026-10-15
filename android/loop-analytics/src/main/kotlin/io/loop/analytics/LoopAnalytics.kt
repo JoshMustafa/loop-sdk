@@ -16,7 +16,13 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Options for [LoopAnalytics.start]. Any option left out keeps its default. */
+/**
+ * Options for [LoopAnalytics.start]. Any option left out keeps its default.
+ *
+ * A data class for apps to build: a library that wraps Loop should not
+ * expose it in its own binary API, since its constructor and `copy` change
+ * whenever an option is added.
+ */
 public data class LoopAnalyticsOptions @JvmOverloads constructor(
     /** Upload as soon as this many events are queued. */
     val flushQueueSize: Int = 30,
