@@ -42,9 +42,11 @@ kotlin {
 
 dependencies {
     api(project(":loop-core"))
+    implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
 
 publishing {
