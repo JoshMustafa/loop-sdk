@@ -288,9 +288,11 @@ internal class AnalyticsRuntime {
         // it are dropped and later ones refused, never buffered for the rest
         // of the process.
         consumer.invokeOnCompletion { cause ->
-            operations.cancel()
+            // Logged before the queue closes, so whoever sees a call refused
+            // can already see why.
             val reason = cause?.let { " on an unexpected ${it.javaClass.name}" }.orEmpty()
             Log.error("LoopAnalytics call queue stopped$reason; later calls are dropped")
+            operations.cancel()
         }
     }
 
