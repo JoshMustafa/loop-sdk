@@ -46,9 +46,9 @@ dependencies {
 publishing {
     publications {
         register<MavenPublication>("release") {
-            groupId = System.getenv("GROUP") ?: "io.loop"
+            groupId = rootProject.extra["loopPublishGroup"] as String
             artifactId = "loop-core"
-            version = System.getenv("VERSION") ?: "2.0.0"
+            version = rootProject.extra["loopPublishVersion"] as String
             afterEvaluate { from(components["release"]) }
         }
     }
