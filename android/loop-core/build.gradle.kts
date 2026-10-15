@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 
 plugins {
     alias(libs.plugins.android.library)
@@ -33,6 +34,14 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_1_8)
+        // Built with Kotlin 2.2, but emits 1.9 metadata and uses only the 1.9
+        // standard library API, so apps still on Kotlin 1.9 can consume it.
+        // 1.9 is deprecated as a target; its deprecation warnings are silenced.
+        @Suppress("DEPRECATION")
+        languageVersion.set(KotlinVersion.KOTLIN_1_9)
+        @Suppress("DEPRECATION")
+        apiVersion.set(KotlinVersion.KOTLIN_1_9)
+        freeCompilerArgs.add("-Xsuppress-version-warnings")
         optIn.add("io.loop.core.InternalLoopApi")
     }
 }
