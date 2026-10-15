@@ -1,8 +1,6 @@
+/// Product analytics for Flutter apps, sent to Loop through the native Loop
+/// SDK on iOS and Android.
+library;
 
-import 'loop_analytics_platform_interface.dart';
-
-class LoopAnalytics {
-  Future<String?> getPlatformVersion() {
-    return LoopAnalyticsPlatform.instance.getPlatformVersion();
-  }
-}
+export 'src/loop_analytics.dart' show LoopAnalytics;
+export 'src/options.dart' show LoopLogLevel, LoopOptions;

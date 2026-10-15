@@ -3,22 +3,46 @@ import UIKit
 
 public class LoopAnalyticsPlugin: NSObject, FlutterPlugin {
   public static func register(with registrar: FlutterPluginRegistrar) {
-    let channel = FlutterMethodChannel(name: "loop_analytics", binaryMessenger: registrar.messenger())
-    let instance = LoopAnalyticsPlugin()
-    registrar.addMethodCallDelegate(instance, channel: channel)
+    LoopAnalyticsHostApiSetup.setUp(
+      binaryMessenger: registrar.messenger(), api: LoopAnalyticsPlugin())
+  }
+}
+
+// TEMPORARY (Task 2): no-op host API so the Pigeon channel is registered and
+// the plugin compiles. Task 3 replaces it with calls into the native SDK.
+extension LoopAnalyticsPlugin: LoopAnalyticsHostApi {
+  func configure(
+    apiKey: String, options: NativeOptions,
+    completion: @escaping (Result<Void, Error>) -> Void
+  ) {
+    // Keeps the Task 1 proof that the native LoopCore sources link.
+    Loop.configure(apiKey: apiKey)
+    completion(.success(()))
   }
 
-  public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-    switch call.method {
-    case "getPlatformVersion":
-      result("iOS " + UIDevice.current.systemVersion)
-    case "configure":
-      // TEMPORARY (Task 1 spike): proves the native LoopCore sources compile
-      // into this pod and link. Replaced by the Pigeon host API in Task 3.
-      Loop.configure(apiKey: call.arguments as? String ?? "")
-      result(nil)
-    default:
-      result(FlutterMethodNotImplemented)
-    }
+  func track(name: String, properties: [String?: Any?]) {}
+
+  func setUserId(userId: String?) {}
+
+  func setUserProperties(properties: [String?: Any?]) {}
+
+  func setPurchaserId(purchaserId: String?) {}
+
+  func flush(completion: @escaping (Result<Void, Error>) -> Void) {
+    completion(.success(()))
+  }
+
+  func reset(completion: @escaping (Result<Void, Error>) -> Void) {
+    completion(.success(()))
+  }
+
+  func setOptOut(optOut: Bool) {}
+
+  func deviceId(completion: @escaping (Result<String?, Error>) -> Void) {
+    completion(.success(nil))
+  }
+
+  func sessionId(completion: @escaping (Result<Int64?, Error>) -> Void) {
+    completion(.success(nil))
   }
 }
