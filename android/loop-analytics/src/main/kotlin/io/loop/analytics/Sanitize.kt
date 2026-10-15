@@ -1,6 +1,5 @@
 package io.loop.analytics
 
-import android.annotation.SuppressLint
 import org.json.JSONArray
 import org.json.JSONObject
 import java.math.BigDecimal
@@ -29,7 +28,7 @@ internal object Sanitize {
      * from maps; lists keep their positions. org.json's `JSONObject` and
      * `JSONArray` become objects and arrays. Strings, booleans, finite numbers, collections, arrays
      * and maps pass through; map keys become strings, [Date] and
-     * `java.time.Instant` become ISO 8601 UTC strings, non-finite numbers
+     * `java.time.Instant` (also desugared) become ISO 8601 UTC strings, non-finite numbers
      * become `"nan"`, `"inf"` or `"-inf"` (as on iOS), and anything else its
      * `toString()`. Nothing is truncated.
      */
@@ -137,26 +136,23 @@ internal object Sanitize {
     }
 
     /**
-     * `java.time.Instant` exists from API 26 (or with desugaring), so it is
-     * looked up by name rather than referenced in an `is` check, which would
-     * fail on older devices.
+     * The instant classes, by name: `java.time.Instant` exists only from API
+     * 26, and core-library desugaring rewrites an app's uses of it to
+     * `j$.time.Instant` below that. Neither can be referenced in an `is`
+     * check, so both are recognised by class name (each is final).
      */
-    private val instantClass: Class<*>? =
-        try {
-            Class.forName("java.time.Instant")
-        } catch (_: ClassNotFoundException) {
-            null
-        }
+    private val instantClassNames = setOf("java.time.Instant", "j\$.time.Instant")
 
+    /** An instant as a millisecond ISO 8601 string; null if [value] is no instant. */
     private fun instantValue(value: Any): JsonValue? {
-        if (instantClass?.isInstance(value) != true) return null
-        return try {
-            JsonValue.Str(LoopTimestamp.format(instantMillis(value)))
-        } catch (_: ArithmeticException) {
-            JsonValue.Str(value.toString()) // beyond the range of epoch milliseconds
+        if (value.javaClass.name !in instantClassNames) return null
+        val millis = try {
+            value.javaClass.getMethod("toEpochMilli").invoke(value) as Long
+        } catch (_: ReflectiveOperationException) {
+            // Beyond the range of epoch milliseconds (an ArithmeticException,
+            // wrapped), or the method was shrunk away: its own ISO 8601 form.
+            return JsonValue.Str(value.toString())
         }
+        return JsonValue.Str(LoopTimestamp.format(millis))
     }
-
-    @SuppressLint("NewApi") // only called once instantClass confirmed java.time.Instant exists
-    private fun instantMillis(value: Any): Long = (value as java.time.Instant).toEpochMilli()
 }

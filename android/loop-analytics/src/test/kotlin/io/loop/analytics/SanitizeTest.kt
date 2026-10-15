@@ -239,6 +239,27 @@ class SanitizeTest {
         assertEquals(JsonValue.Arr(listOf(JsonValue.IntV(1))), out["sequence"])
     }
 
+    /** D8 core-library desugaring rewrites an app's `java.time.Instant` to `j$.time.Instant` below API 26. */
+    @Test
+    fun desugared_instants_become_the_same_iso_strings_as_java_time_instants() {
+        val desugared = Class.forName("j\$.time.Instant")
+        val instant = desugared.getMethod("ofEpochMilli", Long::class.javaPrimitiveType).invoke(null, 1_791_969_118_402L)
+        val beyondMillis = desugared.getMethod("outOfMillisRange").invoke(null)
+        val out = Sanitize.props(
+            mapOf(
+                "desugared" to instant,
+                "javaTime" to Instant.ofEpochMilli(1_791_969_118_402),
+                "beyondMillis" to beyondMillis,
+                "javaTimeMax" to Instant.MAX,
+            ),
+        )
+        assertEquals(JsonValue.Str("2026-10-14T09:11:58.402Z"), out["desugared"])
+        assertEquals(JsonValue.Str("2026-10-14T09:11:58.402Z"), out["javaTime"])
+        // Beyond epoch milliseconds: the instant's own ISO 8601 form.
+        assertEquals(JsonValue.Str("+1000000000-12-31T23:59:59.999999999Z"), out["beyondMillis"])
+        assertEquals(JsonValue.Str(Instant.MAX.toString()), out["javaTimeMax"])
+    }
+
     // isValidEventName
 
     @Test
