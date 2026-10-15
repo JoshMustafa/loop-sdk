@@ -71,7 +71,12 @@ dependencies:
       ref: 2.0.0
 ```
 
-No Podfile or JitPack lines are needed: the plugin compiles the native sources from the checkout. Requires iOS 16+, Android minSdk 21, and Kotlin 1.9 or newer in the host app (coroutines 1.9 needs it).
+No `pod` or JitPack lines are needed; only the iOS 16 platform setting. The plugin compiles the native sources from the checkout. Requires Dart `>=3.4.0`, Flutter `>=3.22.0`, iOS 16+, Android `compileSdk` 34+ and minSdk 21, and Kotlin 1.9 or newer in the host app (coroutines 1.9 needs it).
+
+iOS setup: a new Flutter app targets a lower iOS version, so `pod install` fails with "required a higher minimum deployment target" until you raise it in two places:
+
+1. In `ios/Podfile`, set `platform :ios, '16.0'` (Flutter's template has this line commented out, and CocoaPods then assumes iOS 12).
+2. In Xcode, set the Runner target's General → Minimum Deployments to 16.0 (`IPHONEOS_DEPLOYMENT_TARGET = 16.0`). Otherwise the app links an iOS 16 framework into a lower-target app.
 
 ## Quick start
 
@@ -204,22 +209,35 @@ Android notes:
 ## Flutter quick start
 
 ```dart
+import 'package:flutter/material.dart';
 import 'package:loop_analytics/loop_analytics.dart';
 
-await LoopAnalytics.init(
-  apiKey: 'loop_pk_…',
-  options: LoopOptions(legacyDeviceId: previousSdkDeviceId), // optional
-);
+// Placeholders: replace with your own values.
+const String? previousSdkDeviceId = null; // device id from a previous analytics SDK, if any
+const String? revenueCatAppUserId = null; // your purchases SDK's app user id, if any
 
-final loop = LoopAnalytics.instance!;
-loop.track('Item Viewed', {'Index': 1});
-loop.setUserId('12345');                       // null when signed out
-loop.setUserProperties({'Plan': 'annual'});    // a null value removes a property
-loop.setPurchaserId(revenueCatAppUserId);
-final deviceId = await loop.deviceId();        // async in the plugin
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await LoopAnalytics.init(
+    apiKey: 'loop_pk_…',
+    options: const LoopOptions(legacyDeviceId: previousSdkDeviceId), // optional
+  );
+
+  final loop = LoopAnalytics.instance!;
+  loop.track('Item Viewed', {'Index': 1});
+  loop.setUserId('12345');                       // null when signed out
+  loop.setUserProperties({'Plan': 'annual'});    // a null value removes a property
+  loop.setPurchaserId(revenueCatAppUserId);
+  final deviceId = await loop.deviceId();        // async in the plugin
+  debugPrint('device id ready: ${deviceId != null}');
+
+  runApp(const MaterialApp(home: Scaffold()));
+}
 ```
 
-The plugin forwards every call to the native SDK, so behaviour and defaults match iOS and Android. `LoopAnalytics.instance` is set as soon as `init` is called; calls made before `init` completes are buffered (up to 1000, oldest dropped) and sent in order. `flush()`, `reset()`, `deviceId()` and `sessionId()` are async; `deviceId()` and `sessionId()` were getters in the pure-Dart SDK and are the only API change. See [flutter/loop_analytics/README.md](./flutter/loop_analytics/README.md) for options and notes.
+The plugin forwards every call to the native SDK, so it behaves as the native SDKs, which pass the shared conformance cases. Calls made before `init` completes are buffered (up to 1000, oldest dropped) and sent in order. `flush()`, `reset()`, `deviceId()` and `sessionId()` are async.
+
+Changes from the pure-Dart SDK: `deviceId()` and `sessionId()` are now async (they were getters); the `userId` and `isOptedOut` getters and `dispose()` are removed; and `LoopAnalytics.instance` is now set as soon as `init` is called, not when it completes. See [flutter/loop_analytics/README.md](./flutter/loop_analytics/README.md) for options and notes.
 
 ## Migrating from `LoopSDK`
 
