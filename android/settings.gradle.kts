@@ -18,3 +18,4 @@ rootProject.name = "loop-sdk"
 
 include(":loop-core")
 include(":loop-analytics")
+include(":sample")

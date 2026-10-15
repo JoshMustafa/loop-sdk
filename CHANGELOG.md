@@ -13,6 +13,15 @@ The package is renamed from `LoopSDK` to `Loop` and split into modules.
 
 Each module is its own SwiftPM product and CocoaPods pod (tags have no `v` prefix, e.g. `2.0.0`).
 
+### Android
+
+- **loop-core** and **loop-analytics** (new) for Android, in `android/`. Install from JitPack: `implementation("com.github.JoshMustafa.loop-sdk:loop-analytics:2.0.0")` with `maven { url = uri("https://jitpack.io") }`. minSdk 21.
+- Same wire format, defaults and behaviour as iOS, pinned by the same `conformance/` cases (Kotlin runner `ConformanceTest`).
+- `Loop.configure(context, apiKey, options)`; `LoopAnalytics.start`, `track`, `setUserId`, `setUserProperties`, `setPurchaserId`, `setOptOut`, `deviceId`, `sessionId`; suspend `flush()`/`reset()` plus Java-friendly `flushAsync(Runnable?)`/`resetAsync(Runnable?)`. `LoopAnalyticsOptions` takes times in milliseconds (`flushIntervalMillis`, `minTimeBetweenSessionsMillis`).
+- The queue lives in `noBackupFilesDir`. Foreground/background uploads use `ProcessLifecycleOwner`; removing androidx.startup's `InitializationProvider` disables them (with a logged warning) while timer and queue-size uploads continue. The upload timer pauses in the background.
+- `kotlinx-coroutines-android` is an `api` dependency.
+- A minimal sample app in `android/sample/` (not published).
+
 ### Renamed
 
 | 1.x | 2.0.0 |

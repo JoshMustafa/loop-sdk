@@ -16,10 +16,10 @@ Native SwiftUI on iOS (no WebView), survives offline, anonymous by default. Conf
 
 | Module | What it does | iOS | Android | Flutter |
 |---|---|---|---|---|
-| **LoopCore** | API key, ids, networking, device info. Every module depends on it. | ✅ | planned | (inside each plugin) |
+| **LoopCore** | API key, ids, networking, device info. Every module depends on it. | ✅ | ✅ | (inside each plugin) |
 | **LoopFeedback** | Bug & feature reporter UI: lists, votes, replies, new reports, optional email | ✅ | later | later |
 | **LoopDiagnostics** | Breadcrumbs and captured problems | ✅ | later | later |
-| **LoopAnalytics** | Events, user id, user properties, sessions | ✅ | planned | planned |
+| **LoopAnalytics** | Events, user id, user properties, sessions | ✅ | ✅ | planned |
 
 Modules never depend on each other, so an app that only wants feedback doesn't ship analytics, and vice versa.
 
@@ -39,6 +39,26 @@ pod 'LoopAnalytics',   :git => 'https://github.com/JoshMustafa/loop-sdk.git', :t
 ```
 
 Requires iOS 16+.
+
+**Android (Gradle, via JitPack).** `loop-core` and `loop-analytics` are available on Android. Add JitPack to your repositories (in `settings.gradle.kts`):
+
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
+}
+```
+
+Then add the dependency (it brings in `loop-core`):
+
+```kotlin
+implementation("com.github.JoshMustafa.loop-sdk:loop-analytics:2.0.0")
+```
+
+Requires minSdk 21. `kotlinx-coroutines-android` is an `api` dependency (the async `flushAsync()`/`resetAsync()` return a coroutines `Job`); `androidx.lifecycle:lifecycle-process` is pulled in for foreground/background detection.
 
 ## Quick start
 
@@ -209,7 +229,42 @@ Every request carries `Authorization: Bearer loop_pk_…` and `X-Loop-Reporter-I
 
 Analytics bodies are gzip-compressed (`Content-Encoding: gzip`).
 
-## Repository layout
+### Android quick start
+
+```kotlin
+import io.loop.analytics.LoopAnalytics
+import io.loop.analytics.LoopAnalyticsOptions
+import io.loop.core.Loop
+
+class App : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        Loop.configure(this, "loop_pk_…")
+        LoopAnalytics.start()                       // optional; defaults are used otherwise
+    }
+}
+
+LoopAnalytics.track("Item Viewed", mapOf("Index" to 1))
+LoopAnalytics.setUserId("12345")                    // null when signed out
+LoopAnalytics.setUserProperties(mapOf("Plan" to "annual"))   // null value removes a property
+LoopAnalytics.setPurchaserId(revenueCatAppUserId)
+
+// Options use milliseconds on Android
+LoopAnalytics.start(LoopAnalyticsOptions(flushIntervalMillis = 60_000))
+```
+
+From Java: `LoopAnalytics.flushAsync(null);` (the `Runnable` callback, when given, runs on the main thread once done).
+
+The fire-and-forget calls behave as on iOS. `flush()` and `reset()` are `suspend` functions; Java callers use `flushAsync(Runnable?)` and `resetAsync(Runnable?)`. Also available: `setOptOut(Boolean)`, and the read-only `deviceId` and `sessionId`. `LoopAnalyticsOptions` is a data class with the same defaults as iOS, except that times are in milliseconds: `flushIntervalMillis` (30 000) and `minTimeBetweenSessionsMillis` (300 000).
+
+Android notes:
+
+- The queue lives in `noBackupFilesDir`, so it is never backed up or restored to another device.
+- Foreground and background are detected with `ProcessLifecycleOwner`. If your app removes androidx.startup's `InitializationProvider`, uploads on foreground and background stop and a warning is logged; uploads on the timer and on queue size still happen.
+- The 30 s upload timer pauses while the app is in the background.
+- A sample app lives in `android/sample/` (`./gradlew :sample:assembleDebug` from `android/`, with your key in place of `loop_pk_REPLACE_ME`). It is not published.
+
+
 
 ```
 Package.swift          SwiftPM manifest (sources under ios/)
@@ -218,9 +273,10 @@ conformance/           shared, platform-neutral behaviour cases (JSON)
 ios/Sources/           LoopCore, LoopFeedback, LoopDiagnostics, LoopAnalytics
 ios/Tests/             one test target per module + shared LoopTestSupport
 ios/Examples/          minimal SwiftUI host app (see its README)
+android/               loop-core, loop-analytics (Gradle) and a sample app
 ```
 
-Android (`android/`) and Flutter (`flutter/`) land in later releases, sharing one conformance suite so every platform behaves the same.
+Flutter (`flutter/`) lands in a later release. Every platform shares one conformance suite so they all behave the same.
 
 ## Tests
 
@@ -235,6 +291,12 @@ The UI is tested by hand with the example app.
 
 ```bash
 swift test --filter ConformanceTests
+```
+
+The Android runner (from `android/`):
+
+```bash
+./gradlew :loop-analytics:testDebugUnitTest --tests '*ConformanceTest*'
 ```
 
 ## License
