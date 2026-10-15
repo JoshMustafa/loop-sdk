@@ -86,12 +86,14 @@ void main() {
   Future<LoopAnalytics> init({
     String apiKey = 'loop_pk_test',
     LoopOptions options = const LoopOptions(),
+    Duration configureTimeout = const Duration(seconds: 10),
   }) =>
       LoopAnalytics.initWithHostApi(
         apiKey: apiKey,
         options: options,
         hostApi: host,
         logSink: logSink,
+        configureTimeout: configureTimeout,
       );
 
   /// Every host call as `[method, ...args]`, for deep comparison.
@@ -381,6 +383,37 @@ void main() {
       await pumpEventQueue();
 
       expect(host.methods, ['configure', 'track']);
+    });
+
+    test('pending awaited calls resolve after a failed configure', () async {
+      host.failing.add('configure');
+      final started = init();
+      final flushed = LoopAnalytics.instance!.flush();
+      final deviceId = LoopAnalytics.instance!.deviceId();
+
+      await started;
+
+      await flushed;
+      expect(await deviceId, 'device-id-value');
+      expect(host.methods, ['configure', 'flush', 'deviceId']);
+    });
+
+    test('a configure that never completes times out and replays', () async {
+      host.configureGate = Completer<void>(); // never completed
+      final started =
+          init(configureTimeout: const Duration(milliseconds: 50));
+      final analytics = LoopAnalytics.instance!;
+      analytics.track('event');
+      final flushed = analytics.flush();
+
+      expect(await started, same(analytics));
+      await flushed;
+      await pumpEventQueue();
+
+      expect(host.methods, ['configure', 'track', 'flush']);
+      expect(logs.single.$1, LoopLogLevel.error);
+      expect(logs.single.$2, contains('configure'));
+      expect(logs.single.$2, contains('TimeoutException'));
     });
 
     test('keep the newest 1000 calls, dropping the oldest with one log line',

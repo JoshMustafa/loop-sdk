@@ -36,6 +36,10 @@ class LoopAnalytics {
   /// dropped.
   static const _maxPendingCalls = 1000;
 
+  /// Longest wait for the native configure before [init] completes anyway,
+  /// so a missing native reply never blocks app launch.
+  static const _configureTimeout = Duration(seconds: 10);
+
   static LoopAnalytics? _instance;
   static Future<LoopAnalytics>? _started;
 
@@ -45,6 +49,9 @@ class LoopAnalytics {
 
   /// Sets up the SDK: configures the native Loop SDK with [apiKey] and starts
   /// analytics with [options]. Calling it again returns the same instance.
+  ///
+  /// Completes once the native SDK is configured, or after 10 seconds if it
+  /// has not replied (logged); either way, calls made meanwhile are sent.
   static Future<LoopAnalytics> init({
     required String apiKey,
     LoopOptions options = const LoopOptions(),
@@ -56,18 +63,22 @@ class LoopAnalytics {
     } catch (_) {
       // The channel call fails instead and is logged.
     }
-    return _init(apiKey, options, LoopAnalyticsHostApi(), _developerLogSink);
+    return _init(apiKey, options, LoopAnalyticsHostApi(), _developerLogSink,
+        _configureTimeout);
   }
 
-  /// [init] with an injected host API and log sink (for tests).
+  /// [init] with an injected host API, log sink and configure timeout (for
+  /// tests).
   @visibleForTesting
   static Future<LoopAnalytics> initWithHostApi({
     required String apiKey,
     LoopOptions options = const LoopOptions(),
     required LoopAnalyticsHostApi hostApi,
     LoopLogSink? logSink,
+    Duration configureTimeout = _configureTimeout,
   }) =>
-      _init(apiKey, options, hostApi, logSink ?? _developerLogSink);
+      _init(apiKey, options, hostApi, logSink ?? _developerLogSink,
+          configureTimeout);
 
   /// Forgets the instance so the next [init] creates a new one (for tests).
   @visibleForTesting
@@ -81,6 +92,7 @@ class LoopAnalytics {
     LoopOptions options,
     LoopAnalyticsHostApi api,
     LoopLogSink logSink,
+    Duration configureTimeout,
   ) {
     final existing = _instance;
     if (existing != null) {
@@ -90,7 +102,8 @@ class LoopAnalytics {
     }
     final analytics = LoopAnalytics._(api, options.logLevel, logSink);
     _instance = analytics;
-    return _started = analytics._configure(apiKey, options);
+    return _started =
+        analytics._configure(apiKey, options, configureTimeout);
   }
 
   final LoopAnalyticsHostApi _api;
@@ -103,8 +116,15 @@ class LoopAnalytics {
   final _pending = ListQueue<_PendingCall>();
   bool _loggedPendingOverflow = false;
 
-  Future<LoopAnalytics> _configure(String apiKey, LoopOptions options) async {
-    await _call('configure', () => _api.configure(apiKey, _native(options)));
+  Future<LoopAnalytics> _configure(
+    String apiKey,
+    LoopOptions options,
+    Duration timeout,
+  ) async {
+    await _call(
+      'configure',
+      () => _api.configure(apiKey, _native(options)).timeout(timeout),
+    );
     // Even if configure failed: the native SDK then ignores the calls.
     while (_pending.isNotEmpty) {
       _pending.removeFirst().send();
