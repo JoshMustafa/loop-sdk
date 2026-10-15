@@ -28,3 +28,9 @@ docs/
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Android / Gradle
+android/.gradle
+android/build
+android/**/build
+android/local.properties
