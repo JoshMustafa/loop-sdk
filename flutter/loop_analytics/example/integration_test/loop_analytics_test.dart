@@ -50,7 +50,12 @@ void main() {
 
   tearDownAll(() => server.close());
 
-  setUp(() => server.uploads.clear());
+  // Uploads whatever a failed earlier test left queued, so it cannot show up
+  // in this test's requests.
+  setUp(() async {
+    await analytics.flush();
+    server.uploads.clear();
+  });
 
   testWidgets('tracked events reach the server in one gzip batch, intact',
       (tester) async {
@@ -141,6 +146,9 @@ void main() {
 
   testWidgets('opted out: new events are dropped and nothing is uploaded',
       (tester) async {
+    // If this test fails while opted out, later tests still upload.
+    addTearDown(() => analytics.setOptOut(false));
+
     analytics.track('Before Opt Out');
     analytics.setOptOut(true);
     analytics.track('While Opted Out');
@@ -160,7 +168,11 @@ void main() {
   });
 
   // Keep last: it leaves the uploader backing off with the event queued.
-  testWidgets('after a 503 the events stay queued and a flush sends nothing',
+  //
+  // This only shows that the backoff holds uploads back. That the events
+  // are kept after a 5xx (and resent unchanged) is covered natively by
+  // conformance cases 11, 15 and 39 (conformance/cases/analytics).
+  testWidgets('a flush during the backoff after a 503 sends nothing',
       (tester) async {
     server.respondNextWith(503); // then 202 again
 

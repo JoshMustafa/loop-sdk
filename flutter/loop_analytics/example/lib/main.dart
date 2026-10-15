@@ -6,7 +6,10 @@ import 'package:loop_analytics/loop_analytics.dart';
 const _apiKey = String.fromEnvironment('LOOP_API_KEY');
 
 void main() {
-  // No need to await: calls made before init completes are kept and sent.
+  // No need to await. LoopAnalytics.instance is set as soon as init is
+  // called, and calls made through it before init completes are kept and
+  // sent once it does. Before init is called, instance is null and
+  // `instance?.track(...)` does nothing.
   LoopAnalytics.init(apiKey: _apiKey);
   runApp(const MyApp());
 }
