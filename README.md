@@ -150,6 +150,46 @@ Loop.configure(apiKey: "loop_pk_…", options: LoopOptions(tierProvider: nil))
 
 The provider is read on every send, must be cheap and non-blocking, and an empty value means "unknown". End users never see the tier.
 
+## Android quick start
+
+```kotlin
+import android.app.Application
+import io.loop.analytics.LoopAnalytics
+import io.loop.analytics.LoopAnalyticsOptions
+import io.loop.core.Loop
+
+class App : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        Loop.configure(this, "loop_pk_…")
+        // Optional: without it, defaults are used. Only the first call counts.
+        // Options take times in milliseconds on Android.
+        LoopAnalytics.start(LoopAnalyticsOptions(flushIntervalMillis = 60_000))
+    }
+}
+
+// Anywhere in the app, e.g. in an Activity
+fun onItemOpened(index: Int, userId: String?, revenueCatAppUserId: String?) {
+    LoopAnalytics.track("Item Viewed", mapOf("Index" to index))
+    LoopAnalytics.setUserId(userId)                                // null when signed out
+    LoopAnalytics.setUserProperties(mapOf("Plan" to "annual"))     // null value removes a property
+    LoopAnalytics.setPurchaserId(revenueCatAppUserId)
+}
+```
+
+From Java: `LoopAnalytics.flushAsync(null);` (the `Runnable` callback, when given, runs on the main thread once done).
+
+The fire-and-forget calls behave as on iOS. `flush()` and `reset()` are `suspend` functions; Java callers use `flushAsync(Runnable?)` and `resetAsync(Runnable?)`. Also available: `setOptOut(Boolean)`, and the read-only `deviceId` and `sessionId`. `LoopAnalyticsOptions` is a data class with the same defaults as iOS, except that times are in milliseconds: `flushIntervalMillis` (30 000) and `minTimeBetweenSessionsMillis` (300 000).
+
+Android notes:
+
+- The queue lives in `noBackupFilesDir`, so it is never backed up or restored to another device.
+- Foreground and background are detected with `ProcessLifecycleOwner`. If your app removes androidx.startup's `InitializationProvider`, uploads on foreground and background stop and a warning is logged; uploads on the timer and on queue size still happen.
+- The 30 s upload timer pauses while the app is in the background.
+- A sample app lives in `android/sample/` (`./gradlew :sample:assembleDebug` from `android/`, with your key in place of `loop_pk_REPLACE_ME`). It is not published.
+
+
+
 ## Migrating from `LoopSDK`
 
 The package was renamed from `LoopSDK` to `Loop` and split into modules.
@@ -229,42 +269,7 @@ Every request carries `Authorization: Bearer loop_pk_…` and `X-Loop-Reporter-I
 
 Analytics bodies are gzip-compressed (`Content-Encoding: gzip`).
 
-### Android quick start
-
-```kotlin
-import io.loop.analytics.LoopAnalytics
-import io.loop.analytics.LoopAnalyticsOptions
-import io.loop.core.Loop
-
-class App : Application() {
-    override fun onCreate() {
-        super.onCreate()
-        Loop.configure(this, "loop_pk_…")
-        LoopAnalytics.start()                       // optional; defaults are used otherwise
-    }
-}
-
-LoopAnalytics.track("Item Viewed", mapOf("Index" to 1))
-LoopAnalytics.setUserId("12345")                    // null when signed out
-LoopAnalytics.setUserProperties(mapOf("Plan" to "annual"))   // null value removes a property
-LoopAnalytics.setPurchaserId(revenueCatAppUserId)
-
-// Options use milliseconds on Android
-LoopAnalytics.start(LoopAnalyticsOptions(flushIntervalMillis = 60_000))
-```
-
-From Java: `LoopAnalytics.flushAsync(null);` (the `Runnable` callback, when given, runs on the main thread once done).
-
-The fire-and-forget calls behave as on iOS. `flush()` and `reset()` are `suspend` functions; Java callers use `flushAsync(Runnable?)` and `resetAsync(Runnable?)`. Also available: `setOptOut(Boolean)`, and the read-only `deviceId` and `sessionId`. `LoopAnalyticsOptions` is a data class with the same defaults as iOS, except that times are in milliseconds: `flushIntervalMillis` (30 000) and `minTimeBetweenSessionsMillis` (300 000).
-
-Android notes:
-
-- The queue lives in `noBackupFilesDir`, so it is never backed up or restored to another device.
-- Foreground and background are detected with `ProcessLifecycleOwner`. If your app removes androidx.startup's `InitializationProvider`, uploads on foreground and background stop and a warning is logged; uploads on the timer and on queue size still happen.
-- The 30 s upload timer pauses while the app is in the background.
-- A sample app lives in `android/sample/` (`./gradlew :sample:assembleDebug` from `android/`, with your key in place of `loop_pk_REPLACE_ME`). It is not published.
-
-
+## Repository layout
 
 ```
 Package.swift          SwiftPM manifest (sources under ios/)
