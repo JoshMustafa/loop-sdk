@@ -1,0 +1,81 @@
+name: iOS
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      # macOS runs every test target, including LoopCoreTests.
+      - name: swift test
+        run: swift test
+
+      - name: Build for iOS Simulator
+        run: |
+          xcodebuild build \
+            -scheme Loop-Package \
+            -destination 'generic/platform=iOS Simulator'
+
+      # Only LoopAnalyticsTests run on the simulator: LoopCoreTests has
+      # pre-existing Keychain failures there (ledgered). swift test above
+      # covers LoopCoreTests on macOS.
+      - name: Pick an iOS Simulator
+        id: simulator
+        run: |
+          # Prefer iPhone 15; fall back to any available iPhone if this
+          # Xcode's runtimes do not include one.
+          udid=$(xcrun simctl list devices available -j | jq -r '
+            [.devices | to_entries[]
+              | select(.key | contains("iOS"))
+              | .value[]
+              | select(.name | startswith("iPhone"))]
+            | (map(select(.name == "iPhone 15")) + .)
+            | first
+            | .udid // empty')
+          if [ -z "$udid" ]; then
+            echo "No available iPhone simulator" >&2
+            xcrun simctl list devices available >&2
+            exit 1
+          fi
+          xcrun simctl list devices available | grep "$udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: LoopAnalyticsTests on iOS Simulator
+        run: |
+          xcodebuild test \
+            -scheme Loop-Package \
+            -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}' \
+            -only-testing:LoopAnalyticsTests
+
+      # LoopCore is linted first on its own; the dependent pods resolve it
+      # from the checkout rather than the trunk.
+      - name: pod lib lint LoopCore
+        run: pod lib lint LoopCore.podspec
+
+      - name: pod lib lint LoopAnalytics
+        run: pod lib lint LoopAnalytics.podspec --include-podspecs=LoopCore.podspec
+
+      # --allow-warnings: recent Swift compilers warn "default will never be
+      # executed" in LoopReporterModel.optimisticUpdate (pre-existing). The
+      # other pods lint strictly.
+      - name: pod lib lint LoopFeedback
+        run: pod lib lint LoopFeedback.podspec --include-podspecs=LoopCore.podspec --allow-warnings
+
+      - name: pod lib lint LoopDiagnostics
+        run: pod lib lint LoopDiagnostics.podspec --include-podspecs=LoopCore.podspec

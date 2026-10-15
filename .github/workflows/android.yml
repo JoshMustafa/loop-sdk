@@ -1,0 +1,61 @@
+name: Android
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Test, build the sample and lint loop-analytics
+        run: ./gradlew test :sample:assembleDebug :loop-analytics:lintRelease
+
+      # Mirrors what JitPack does (jitpack.yml): it sets GROUP, ARTIFACT and
+      # VERSION, and a multi-module repo is served as
+      # com.github.<user>.<repo>:<module>. The published loop-analytics POM
+      # must already depend on loop-core under that group, or JitPack
+      # consumers fail to resolve it.
+      - name: JitPack simulation
+        env:
+          JITPACK: 'true'
+          GROUP: com.github.JoshMustafa
+          ARTIFACT: loop-sdk
+          VERSION: 2.0.0
+        run: |
+          ./gradlew :loop-core:publishToMavenLocal :loop-analytics:publishToMavenLocal \
+            -Dmaven.repo.local="$RUNNER_TEMP/m2"
+          pom="$RUNNER_TEMP/m2/com/github/JoshMustafa/loop-sdk/loop-analytics/2.0.0/loop-analytics-2.0.0.pom"
+          test -f "$pom" || { echo "Missing $pom" >&2; exit 1; }
+          cat "$pom"
+          python3 - "$pom" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          ns = {"m": "http://maven.apache.org/POM/4.0.0"}
+          deps = ET.parse(sys.argv[1]).getroot().findall("m:dependencies/m:dependency", ns)
+          coords = {(d.findtext("m:groupId", namespaces=ns), d.findtext("m:artifactId", namespaces=ns)) for d in deps}
+          want = ("com.github.JoshMustafa.loop-sdk", "loop-core")
+          if want not in coords:
+              sys.exit(f"loop-analytics POM does not depend on {want[0]}:{want[1]}; found {sorted(coords)}")
+          print(f"OK: loop-analytics depends on {want[0]}:{want[1]}")
+          PY
