@@ -2,12 +2,14 @@ name: iOS
 
 on:
   pull_request:
+  workflow_dispatch:
   push:
     branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded runs on branches and PRs are cancelled; every main run completes.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -15,6 +17,7 @@ permissions:
 jobs:
   ios:
     runs-on: macos-14
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 

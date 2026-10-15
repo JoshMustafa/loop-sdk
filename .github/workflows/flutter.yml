@@ -2,12 +2,14 @@ name: Flutter
 
 on:
   pull_request:
+  workflow_dispatch:
   push:
     branches: [main]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded runs on branches and PRs are cancelled; every main run completes.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -19,6 +21,7 @@ permissions:
 jobs:
   analyze-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: flutter/loop_analytics
@@ -58,9 +61,13 @@ jobs:
           # Every native source file must be vendored. The link script only
           # mirrors .swift and PrivacyInfo.xcprivacy, so a new file type in
           # ios/Sources fails here until the script handles it.
-          diff -u \
-            <(cd ios/Sources && find LoopCore LoopAnalytics -type f | sort) \
-            <(cd flutter/loop_analytics/ios/Classes/Vendor && find LoopCore LoopAnalytics -type l | sort)
+          sources=$(cd ios/Sources && find LoopCore LoopAnalytics -type f | sort)
+          vendored=$(cd flutter/loop_analytics/ios/Classes/Vendor && find LoopCore LoopAnalytics -type l | sort)
+          if [ -z "$sources" ] || [ -z "$vendored" ]; then
+            echo "Empty file listing: ios/Sources or ios/Classes/Vendor has no files" >&2
+            exit 1
+          fi
+          diff -u <(echo "$sources") <(echo "$vendored")
 
       - name: Plugin LICENSE matches the repo LICENSE
         working-directory: .
@@ -68,6 +75,7 @@ jobs:
 
   build-android:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: flutter/loop_analytics/example
@@ -78,6 +86,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
       - uses: subosito/flutter-action@v2
         with:
@@ -90,6 +99,7 @@ jobs:
 
   build-ios:
     runs-on: macos-14
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: flutter/loop_analytics/example
