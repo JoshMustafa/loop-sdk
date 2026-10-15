@@ -18,11 +18,23 @@ class JsonValueTest {
     }
 
     @Test
-    fun lone_surrogates_are_escaped_so_the_output_is_valid_utf8() {
-        val value = JsonValue.Str("x\uD800y\uDC00")
-        val text = value.toJson()
-        assertEquals("\"x\\ud800y\\udc00\"", text)
-        assertEquals(value, JsonValue.fromJson(text))
+    fun lone_surrogates_are_written_as_the_replacement_character() {
+        // As Swift (whose strings cannot hold them) does: never a \uD800-style escape.
+        val text = JsonValue.Str("x\uD800y\uDC00z\uDBFF").toJson()
+        assertEquals("\"x\uFFFDy\uFFFDz\uFFFD\"", text)
+        assertEquals(JsonValue.Str("x\uFFFDy\uFFFDz\uFFFD"), JsonValue.fromJson(text))
+    }
+
+    @Test
+    fun unpaired_surrogate_escapes_read_as_the_replacement_character() {
+        assertEquals(JsonValue.Str("\uFFFDx"), JsonValue.fromJson(""""\ud800x""""))
+        assertEquals(JsonValue.Str("\uFFFD"), JsonValue.fromJson(""""\udc00""""))
+        assertEquals(JsonValue.Str("\uFFFDA"), JsonValue.fromJson(""""\ud800\u0041""""))
+        assertEquals(JsonValue.Str("\uFFFD\uFFFD"), JsonValue.fromJson(""""\udc00\ud800""""))
+        assertEquals(JsonValue.Str("\uFFFD😀"), JsonValue.fromJson(""""\ud800\ud83d\ude00""""))
+        // Raw (unescaped) lone surrogates in the text are treated the same way.
+        assertEquals(JsonValue.Str("\uFFFDa\uFFFD"), JsonValue.fromJson("\"\uD800a\uDC00\""))
+        assertEquals(JsonValue.Str("😀"), JsonValue.fromJson("\"😀\""))
     }
 
     @Test

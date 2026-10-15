@@ -3,6 +3,7 @@ package io.loop.analytics
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeFalse
 import org.junit.Before
@@ -283,6 +284,31 @@ class EventStoreTest {
             store.add(sampleEvent("c"))
             assertEquals(listOf("a", "b", "c"), ids(EventStore(queue, 10)))
             assertEquals(listOf("events.jsonl"), readOnly.list()!!.toList())
+        } finally {
+            log.stop()
+        }
+    }
+
+    @Test
+    fun the_directory_can_be_synced_and_a_missing_one_reports_failure() {
+        assertTrue(DirectorySync.sync(dir))
+        assertFalse(DirectorySync.sync(File(dir, "missing")))
+    }
+
+    @Test
+    fun a_failed_directory_sync_is_logged_once_at_debug_level_and_writes_still_succeed() {
+        val log = LogRecorder()
+        try {
+            val store = EventStore(file, 10, syncDirectory = { false })
+            for (id in listOf("a", "b", "c")) store.add(sampleEvent(id))
+            store.remove(setOf("a")) // rewrite 1
+            store.remove(setOf("b")) // rewrite 2
+
+            assertEquals(listOf("c"), ids(EventStore(file, 10)))
+            val debug = log.messages(Log.Level.DEBUG)
+            assertEquals(debug.toString(), 1, debug.size)
+            assertTrue(debug.toString(), debug.first().contains("directory"))
+            assertEquals(emptyList<String>(), log.messages(Log.Level.ERROR))
         } finally {
             log.stop()
         }

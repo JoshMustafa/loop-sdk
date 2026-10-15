@@ -31,8 +31,15 @@ import java.nio.file.StandardOpenOption
  *
  * Thread-safe: every call holds one lock. The constructor and every mutation
  * do disk I/O, so call them off the main thread.
+ *
+ * [syncDirectory] makes a rename durable and reports whether it could; it is
+ * a parameter only so tests can make it fail.
  */
-internal class EventStore(private val file: File?, maxQueueSize: Int) {
+internal class EventStore(
+    private val file: File?,
+    maxQueueSize: Int,
+    private val syncDirectory: (File) -> Boolean = DirectorySync::sync,
+) {
     /** A queued event and its encoded line (UTF-8, without the newline). */
     private class Entry(val event: LoopEvent, val line: ByteArray)
 
@@ -48,6 +55,9 @@ internal class EventStore(private val file: File?, maxQueueSize: Int) {
 
     /** Set when the file no longer matches [entries] (a drop or a failed write); the next write rewrites it. */
     private var needsRewrite = false
+
+    /** A failed directory sync is logged once per store, not on every rewrite. */
+    private var loggedDirectorySyncFailure = false
 
     init {
         val raw = readFile()
@@ -215,27 +225,11 @@ internal class EventStore(private val file: File?, maxQueueSize: Int) {
             temp.delete()
             throw IOException("Could not rename the temporary queue file into place")
         }
-        syncDirectory(directory)
-    }
-
-    /** Makes the rename itself durable. Best effort: a failure here is ignored. */
-    @SuppressLint("NewApi")
-    private fun syncDirectory(directory: File) {
-        try {
-            // FileChannel.open(Path) needs API 26; older devices use Os.fsync.
-            // SDK_INT is 0 on the plain JVM (unit tests), where java.nio.file exists.
-            if (Build.VERSION.SDK_INT in 1 until 26) {
-                val fd = Os.open(directory.path, OsConstants.O_RDONLY, 0)
-                try {
-                    Os.fsync(fd)
-                } finally {
-                    Os.close(fd)
-                }
-            } else {
-                FileChannel.open(directory.toPath(), StandardOpenOption.READ).use { it.force(true) }
-            }
-        } catch (_: Exception) {
-            // Not every filesystem lets a directory be opened or synced.
+        // Make the rename itself durable. Best effort: the new queue is already
+        // in place, so a failure only weakens the guarantee after a power cut.
+        if (!syncDirectory(directory) && !loggedDirectorySyncFailure) {
+            loggedDirectorySyncFailure = true
+            Log.debug("Could not sync the analytics queue directory after a rewrite; continuing without it")
         }
     }
 
@@ -261,5 +255,36 @@ internal class EventStore(private val file: File?, maxQueueSize: Int) {
         private const val CARRIAGE_RETURN = '\r'.code.toByte()
         private const val SPACE = ' '.code.toByte()
         private const val TAB = '\t'.code.toByte()
+    }
+}
+
+/** fsync for a directory, so a rename inside it survives a power cut. */
+internal object DirectorySync {
+    /** Syncs [directory]; false when it could not be opened or synced. */
+    @SuppressLint("ObsoleteSdkInt") // the check tells a device from the plain JVM, not API levels apart
+    fun sync(directory: File): Boolean = try {
+        // SDK_INT is 0 on the plain JVM (unit tests), where android.system.Os is a stub.
+        if (Build.VERSION.SDK_INT > 0) syncWithOs(directory) else syncWithFileChannel(directory)
+        true
+    } catch (_: Exception) {
+        false
+    } catch (_: LinkageError) {
+        false // e.g. a platform without the API, under a test runtime
+    }
+
+    /** Android: open(2) the directory read-only and fsync(2) it. */
+    private fun syncWithOs(directory: File) {
+        val fd = Os.open(directory.path, OsConstants.O_RDONLY, 0)
+        try {
+            Os.fsync(fd)
+        } finally {
+            Os.close(fd)
+        }
+    }
+
+    /** The JVM: a read-only channel on the directory, forced. */
+    @SuppressLint("NewApi") // never runs on Android; see sync()
+    private fun syncWithFileChannel(directory: File) {
+        FileChannel.open(directory.toPath(), StandardOpenOption.READ).use { it.force(true) }
     }
 }

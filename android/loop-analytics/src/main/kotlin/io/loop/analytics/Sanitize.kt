@@ -1,6 +1,8 @@
 package io.loop.analytics
 
 import android.annotation.SuppressLint
+import org.json.JSONArray
+import org.json.JSONObject
 import java.math.BigDecimal
 import java.math.BigInteger
 import java.util.Date
@@ -23,8 +25,9 @@ internal object Sanitize {
     /**
      * Makes event/user properties safe to JSON-encode.
      *
-     * Null values (`null`, [JsonValue.Null]) are stripped from maps; lists keep
-     * their positions. Strings, booleans, finite numbers, collections, arrays
+     * Null values (`null`, [JsonValue.Null], `JSONObject.NULL`) are stripped
+     * from maps; lists keep their positions. org.json's `JSONObject` and
+     * `JSONArray` become objects and arrays. Strings, booleans, finite numbers, collections, arrays
      * and maps pass through; map keys become strings, [Date] and
      * `java.time.Instant` become ISO 8601 UTC strings, non-finite numbers
      * become `"nan"`, `"inf"` or `"-inf"` (as on iOS), and anything else its
@@ -61,7 +64,18 @@ internal object Sanitize {
 
     private fun sanitize(value: Any?): JsonValue = when (value) {
         null -> JsonValue.Null
+        JSONObject.NULL -> JsonValue.Null
         is JsonValue -> sanitizeJson(value)
+        // org.json (part of Android): before Iterable, which the JVM library's JSONArray implements.
+        is JSONObject -> {
+            val out = LinkedHashMap<String, JsonValue>()
+            for (key in value.keys()) {
+                val sanitized = sanitize(value.opt(key))
+                if (sanitized != JsonValue.Null) out[key] = sanitized
+            }
+            JsonValue.Obj(out)
+        }
+        is JSONArray -> JsonValue.Arr((0 until value.length()).map { sanitize(value.opt(it)) })
         is String -> JsonValue.Str(value)
         is Boolean -> JsonValue.Bool(value)
         is Int -> JsonValue.IntV(value.toLong())

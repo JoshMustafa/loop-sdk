@@ -107,18 +107,20 @@ class SanitizeTest {
         assertFalse(out.containsKey("nil"))
     }
 
-    /** Port of `test_bools_stay_bools_including_bridged_ns_numbers`: boxed Java values and parsed JSON. */
+    /** Port of `test_bools_stay_bools_including_bridged_ns_numbers`: boxed Java values and org.json values passed straight in. */
     @Test
     fun bools_stay_bools_including_boxed_java_values() {
-        val json = JSONObject("""{"t":true,"one":1,"half":0.5}""")
-        val decoded = json.keys().asSequence().associateWith { json.get(it) }
+        val json = JSONObject(
+            """{"t":true,"one":1,"half":0.5,"none":null,"nested":{"k":"v","gone":null},"list":[1,null,{"a":2}]}""",
+        )
         val out = Sanitize.props(
             mapOf(
                 "kotlinBool" to false,
                 "javaBool" to java.lang.Boolean.valueOf(true),
                 "javaInt" to Integer.valueOf(1),
                 "javaDouble" to java.lang.Double.valueOf(2.5),
-                "json" to decoded,
+                "json" to json,
+                "jsonNull" to JSONObject.NULL,
             ),
         )
         assertEquals(JsonValue.Bool(false), out["kotlinBool"])
@@ -126,9 +128,21 @@ class SanitizeTest {
         assertEquals(JsonValue.IntV(1), out["javaInt"])
         assertEquals(JsonValue.Num(2.5), out["javaDouble"])
         assertEquals(
-            JsonValue.Obj(mapOf("t" to JsonValue.Bool(true), "one" to JsonValue.IntV(1), "half" to JsonValue.Num(0.5))),
+            JsonValue.Obj(
+                mapOf(
+                    "t" to JsonValue.Bool(true),
+                    "one" to JsonValue.IntV(1),
+                    "half" to JsonValue.Num(0.5),
+                    "nested" to JsonValue.Obj(mapOf("k" to JsonValue.Str("v"))),
+                    "list" to JsonValue.Arr(
+                        listOf(JsonValue.IntV(1), JsonValue.Null, JsonValue.Obj(mapOf("a" to JsonValue.IntV(2)))),
+                    ),
+                ),
+            ),
             out["json"],
         )
+        // org.json's NULL is a null, so it is stripped from maps.
+        assertFalse(out.containsKey("jsonNull"))
     }
 
     /** Port of `test_optionals_nested_in_any_are_unwrapped_or_stripped`. */

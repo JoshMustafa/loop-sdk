@@ -36,6 +36,9 @@ internal sealed interface JsonValue {
     }
 }
 
+/** U+FFFD, written and read in place of an unpaired surrogate. */
+private const val REPLACEMENT = '\uFFFD'
+
 private object JsonWriter {
     private const val HEX = "0123456789abcdef"
 
@@ -94,8 +97,9 @@ private object JsonWriter {
                     out.append(char).append(value[index + 1])
                     index++
                 }
-                // A lone surrogate has no UTF-8 form: escape it so the text stays valid and round-trips.
-                char.isSurrogate() -> escape(char, out)
+                // A lone surrogate has no UTF-8 form. Swift strings cannot hold one, so
+                // write what they would: the replacement character.
+                char.isSurrogate() -> out.append(REPLACEMENT)
                 else -> out.append(char)
             }
             index++
@@ -201,6 +205,10 @@ private class JsonReader(private val text: String) {
         }
     }
 
+    /**
+     * Reads a string. An unpaired surrogate, escaped or raw, becomes U+FFFD so
+     * the result always has a UTF-8 form.
+     */
     private fun readString(): String {
         pos++ // opening quote
         val out = StringBuilder()
@@ -220,15 +228,49 @@ private class JsonReader(private val text: String) {
                         'n' -> out.append('\n')
                         'r' -> out.append('\r')
                         't' -> out.append('\t')
-                        'u' -> out.append(readHex4())
+                        'u' -> appendCodeUnit(readHex4(), out, escaped = true)
                         else -> fail("Invalid escape")
                     }
                 }
                 char < ' ' -> fail("Unescaped control character")
-                else -> out.append(char)
+                else -> appendCodeUnit(char, out, escaped = false)
             }
         }
     }
+
+    /**
+     * Appends [char], pairing a high surrogate with a low one that follows in
+     * the same form (`\uXXXX` escape when [escaped], else raw).
+     */
+    private fun appendCodeUnit(char: Char, out: StringBuilder, escaped: Boolean) {
+        when {
+            char.isHighSurrogate() -> {
+                val low = if (escaped) peekEscapedLowSurrogate() else peekRawLowSurrogate()
+                if (low == null) {
+                    out.append(REPLACEMENT)
+                } else {
+                    out.append(char).append(low)
+                    pos += if (escaped) 6 else 1
+                }
+            }
+            char.isLowSurrogate() -> out.append(REPLACEMENT)
+            else -> out.append(char)
+        }
+    }
+
+    /** The low surrogate of a `\uXXXX` escape at [pos], without consuming it, or null. */
+    private fun peekEscapedLowSurrogate(): Char? {
+        if (pos + 6 > text.length || text[pos] != '\\' || text[pos + 1] != 'u') return null
+        var code = 0
+        for (index in pos + 2 until pos + 6) {
+            val digit = Character.digit(text[index], 16)
+            if (digit < 0) return null
+            code = code * 16 + digit
+        }
+        return code.toChar().takeIf { it.isLowSurrogate() }
+    }
+
+    private fun peekRawLowSurrogate(): Char? = text.getOrNull(pos)?.takeIf { it.isLowSurrogate() }
 
     private fun readHex4(): Char {
         if (pos + 4 > text.length) fail("Invalid unicode escape")
