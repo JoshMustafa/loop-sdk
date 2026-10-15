@@ -8,6 +8,7 @@ through them:
 |---|---|---|
 | Dart (reference) | `loop-sdk-flutter/test/conformance_test.dart` | `flutter test test/conformance_test.dart` (in `loop-sdk-flutter`) |
 | iOS (Swift) | `loop-sdk-ios/ios/Tests/LoopAnalyticsTests/ConformanceTests.swift` | `swift test --filter ConformanceTests` (in `loop-sdk-ios`) |
+| Android (Kotlin) | `loop-sdk-ios/android/loop-analytics/src/test/kotlin/io/loop/analytics/conformance/ConformanceTest.kt` | `cd android && ./gradlew :loop-analytics:testDebugUnitTest --tests '*ConformanceTest*'` (in `loop-sdk-ios`) |
 
 Cases live in `cases/<area>/NN-slug.json` (today only `cases/analytics/`).
 `schema.json` is a JSON Schema (draft 2020-12) for a case file.
