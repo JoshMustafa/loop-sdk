@@ -45,9 +45,10 @@ public data class LoopAnalyticsOptions @JvmOverloads constructor(
  *
  * Calls are fire-and-forget: they return at once, from any thread, run in
  * the order they were made, and never throw into the app. Calls made before
- * `Loop.configure` are dropped. Events are queued on disk and uploaded in
- * batches in the background; no call does disk or network work on the
- * caller's thread.
+ * `Loop.configure` are dropped, as are calls with a null name, options or
+ * properties map (possible from Java), which are logged. Events are queued
+ * on disk and uploaded in batches in the background; no call does disk or
+ * network work on the caller's thread.
  */
 public object LoopAnalytics {
     /**
@@ -61,7 +62,8 @@ public object LoopAnalytics {
      */
     @JvmStatic
     @JvmOverloads
-    public fun start(options: LoopAnalyticsOptions = LoopAnalyticsOptions()) {
+    public fun start(options: LoopAnalyticsOptions? = LoopAnalyticsOptions()) {
+        if (options == null) return Log.error("LoopAnalytics.start ignored: options is null")
         AnalyticsRuntime.shared.start(options)
     }
 
@@ -73,7 +75,8 @@ public object LoopAnalytics {
      */
     @JvmStatic
     @JvmOverloads
-    public fun track(name: String, properties: Map<String, Any?>? = null) {
+    public fun track(name: String?, properties: Map<String, Any?>? = null) {
+        if (name == null) return Log.error("LoopAnalytics.track ignored: the event name is null")
         val props = if (properties == null) null else (readProperties { Sanitize.props(properties) } ?: return)
         AnalyticsRuntime.shared.enqueue { it.track(name, props) }
     }
@@ -89,7 +92,8 @@ public object LoopAnalytics {
      * A null (or `JSONObject.NULL`) value removes that property.
      */
     @JvmStatic
-    public fun setUserProperties(properties: Map<String, Any?>) {
+    public fun setUserProperties(properties: Map<String, Any?>?) {
+        if (properties == null) return Log.error("LoopAnalytics.setUserProperties ignored: properties is null")
         val update = readProperties { userPropertiesUpdate(properties) } ?: return
         AnalyticsRuntime.shared.enqueue { it.setUserProperties(update) }
     }
@@ -235,11 +239,13 @@ public object LoopAnalytics {
     /**
      * Runs [read] on the caller's thread, so a map the app changes later is
      * not seen half-changed. Null (logged) if reading the map throws (e.g.
-     * the app changes it on another thread meanwhile).
+     * the app changes it on another thread meanwhile, or a map contains
+     * itself and overflows the stack). Only an [OutOfMemoryError] is rethrown.
      */
     private inline fun <T : Any> readProperties(read: () -> T?): T? = try {
         read()
-    } catch (e: RuntimeException) {
+    } catch (e: Throwable) {
+        if (e is OutOfMemoryError) throw e
         Log.error("Dropped a LoopAnalytics call: its properties could not be read (${e.javaClass.name})")
         null
     }

@@ -377,6 +377,66 @@ class LoopAnalyticsTest {
         runtime.waitForPendingCalls()
     }
 
+    /** Calls [name] on `LoopAnalytics` as Java would: no Kotlin null checks at the call site. */
+    private fun callFromJava(name: String, parameterTypes: Array<Class<*>>, vararg args: Any?) {
+        try {
+            LoopAnalytics::class.java.getMethod(name, *parameterTypes).invoke(null, *args)
+        } catch (e: java.lang.reflect.InvocationTargetException) {
+            throw AssertionError("LoopAnalytics.$name threw ${e.cause}", e.cause)
+        }
+    }
+
+    @Test
+    fun null_arguments_from_java_are_logged_and_dropped_never_thrown() = blockingTest {
+        val log = recordLog()
+        val h = facadeHarness()
+        configure()
+        val string = String::class.java
+        val map = Map::class.java
+        callFromJava("start", arrayOf(LoopAnalyticsOptions::class.java), null)
+        callFromJava("track", arrayOf(string), null)
+        callFromJava("track", arrayOf(string, map), null, mapOf("Index" to 1))
+        callFromJava("setUserProperties", arrayOf(map), null)
+        callFromJava("setUserId", arrayOf(string), null)
+        callFromJava("setPurchaserId", arrayOf(string), null)
+        LoopAnalytics.track("A")
+        LoopAnalytics.flush()
+
+        assertEquals(listOf("A"), h.transport.sentNames)
+        val event = h.transport.sentEvents.single()
+        assertEquals(JsonValue.Null, event["userId"])
+        assertEquals(obj(), event["userProps"])
+        assertEquals(
+            listOf(
+                "LoopAnalytics.start ignored: options is null",
+                "LoopAnalytics.track ignored: the event name is null",
+                "LoopAnalytics.track ignored: the event name is null",
+                "LoopAnalytics.setUserProperties ignored: properties is null",
+            ),
+            log.messages(Log.Level.ERROR),
+        )
+    }
+
+    @Test
+    fun a_map_that_contains_itself_is_logged_and_dropped_never_thrown() = blockingTest {
+        val log = recordLog()
+        val h = facadeHarness()
+        configure()
+        val looped = HashMap<String, Any?>()
+        looped["Self"] = looped
+        LoopAnalytics.track("Looped", looped)
+        LoopAnalytics.setUserProperties(looped)
+        LoopAnalytics.track("A")
+        LoopAnalytics.flush()
+
+        assertEquals(listOf("A"), h.transport.sentNames)
+        assertEquals(obj(), h.transport.sentEvents.single()["userProps"])
+        assertEquals(
+            List(2) { "Dropped a LoopAnalytics call: its properties could not be read (java.lang.StackOverflowError)" },
+            log.messages(Log.Level.ERROR),
+        )
+    }
+
     @Test
     fun an_empty_api_key_is_logged_as_an_error() = blockingTest {
         val log = recordLog()
