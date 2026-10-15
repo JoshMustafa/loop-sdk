@@ -16,14 +16,19 @@ permissions:
 
 jobs:
   ios:
-    runs-on: macos-14
+    # Pinned runner image and Xcode so CI matches local development (Xcode
+    # 26.0.1). macos-15 ships Xcode 26.0.1 alongside 16.x (runner-images
+    # macos-15 README, image 20260824); latest-stable on macos-14 was a
+    # moving 16.x target. Watch the first run after changing either pin:
+    # the image's Xcode list can change.
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: '26.0.1'
 
       # macOS runs every test target, including LoopCoreTests.
       - name: swift test
