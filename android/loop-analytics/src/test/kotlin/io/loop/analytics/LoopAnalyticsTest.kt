@@ -3,6 +3,8 @@ package io.loop.analytics
 import android.content.ContextWrapper
 import io.loop.core.Loop
 import io.loop.core.LoopOptions
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -327,6 +329,52 @@ class LoopAnalyticsTest {
             assertEquals("Bearer loop_pk_test", sent.headers["Authorization"])
         }
         assertEquals("DEVICE-1R", LoopAnalytics.deviceId)
+    }
+
+    @Test
+    fun an_Error_stops_the_call_queue_and_later_calls_are_dropped_not_buffered() = blockingTest {
+        val log = recordLog()
+        val h = harness(startEngine = false)
+        configure()
+        // A queue of its own: the shared one must outlive this test.
+        val runtime = AnalyticsRuntime()
+        runtime.resetForTesting { h.environment() }
+        val ran = AtomicInteger()
+        val gate = CompletableDeferred<Unit>()
+        assertTrue(runtime.enqueueOperation { gate.await() })
+        assertTrue(runtime.enqueueOperation { throw StackOverflowError() })
+        assertTrue("queued behind the Error", runtime.enqueueOperation { ran.incrementAndGet() })
+        val waiting = async { runtime.waitForPendingCalls() }
+        gate.complete(Unit)
+
+        waiting.await() // returns although its call is dropped
+        assertEquals("calls queued behind the Error are dropped", 0, ran.get())
+        assertFalse("later calls are refused, not buffered", runtime.enqueueOperation { ran.incrementAndGet() })
+        runtime.waitForPendingCalls()
+        assertEquals(0, ran.get())
+        val stopped = log.messages(Log.Level.ERROR).filter { it.contains("call queue stopped") }
+        assertEquals(log.messages(Log.Level.ERROR).toString(), listOf("LoopAnalytics call queue stopped on an unexpected java.lang.StackOverflowError; later calls are dropped"), stopped)
+    }
+
+    @Test
+    fun an_Exception_in_a_call_is_logged_and_later_calls_still_run() = blockingTest {
+        val log = recordLog()
+        val h = harness(startEngine = false)
+        configure()
+        val runtime = AnalyticsRuntime()
+        runtime.resetForTesting { h.environment() }
+        val ran = AtomicInteger()
+        runtime.enqueueOperation { throw IllegalStateException("boom") }
+        runtime.enqueueOperation { ran.incrementAndGet() }
+        runtime.waitForPendingCalls()
+
+        assertEquals(1, ran.get())
+        assertEquals(
+            listOf("A LoopAnalytics call failed on an unexpected java.lang.IllegalStateException"),
+            log.messages(Log.Level.ERROR),
+        )
+        runtime.resetForTesting(null)
+        runtime.waitForPendingCalls()
     }
 
     @Test
@@ -777,6 +825,69 @@ class LoopAnalyticsTest {
         h.advance(30_000)
         assertEquals(3, h.transport.requests.size)
         assertEquals("B", h.transport.sentNames.last())
+    }
+
+    @Test
+    fun the_flush_timer_pauses_in_the_background_and_resumes_in_the_foreground() = blockingTest {
+        val h = harness(LoopAnalyticsOptions(flushQueueSize = 100, flushIntervalMillis = 30_000))
+        h.engine.track("A", null)
+        h.lifecycle.emit(false)
+        h.engine.waitUntilIdle()
+        assertEquals("the background flush still runs", listOf("A"), h.transport.sentNames)
+        assertEquals("no timer while in the background", 0, h.scheduler.activeTimers)
+
+        h.engine.track("B", null)
+        h.advance(120_000)
+        assertEquals("no ticks in the background", listOf("A"), h.transport.sentNames)
+
+        h.lifecycle.emit(true)
+        h.engine.waitUntilIdle()
+        assertEquals(1, h.scheduler.activeTimers)
+        assertEquals("the foreground flush sends what was queued", listOf("A", "B"), h.transport.sentNames)
+        h.engine.track("C", null)
+        h.advance(30_000)
+        assertEquals("ticks resume in the foreground", listOf("A", "B", "C"), h.transport.sentNames)
+
+        h.lifecycle.emit(true) // already in the foreground: no second timer
+        h.engine.waitUntilIdle()
+        assertEquals(1, h.scheduler.activeTimers)
+    }
+
+    @Test
+    fun a_process_started_in_the_background_runs_no_flush_timer_until_the_foreground() = blockingTest {
+        val h = harness(LoopAnalyticsOptions(flushQueueSize = 100))
+        h.engine.dispose()
+        val h2 = h.restarted(startsInForeground = false)
+        harnesses.add(h2)
+        h2.engine.waitUntilIdle()
+        assertEquals(0, h2.scheduler.activeTimers)
+
+        h2.engine.track("A", null)
+        h2.advance(60_000)
+        assertEquals(0, h2.transport.requests.size)
+
+        h2.lifecycle.emit(true)
+        h2.engine.waitUntilIdle()
+        assertEquals(1, h2.scheduler.activeTimers)
+    }
+
+    @Test
+    fun without_any_lifecycle_state_the_flush_timer_keeps_running() = blockingTest {
+        // A lifecycle that never reports (e.g. the process lifecycle was never initialised).
+        val h = harness(startEngine = false)
+        val engine = AnalyticsEngine.create(
+            EngineHarness.API_KEY,
+            EngineHarness.SERVER_URL,
+            LoopAnalyticsOptions(flushQueueSize = 100),
+            h.environment().copy(lifecycle = LifecycleSource { }),
+        )
+        try {
+            engine.track("A", null)
+            h.scheduler.advance(30_000) { engine.waitUntilIdle() }
+            assertEquals(listOf("A"), h.transport.sentNames)
+        } finally {
+            engine.dispose()
+        }
     }
 
     @Test

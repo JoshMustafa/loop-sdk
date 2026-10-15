@@ -12,6 +12,7 @@ import io.loop.core.KeyValueStore
 import io.loop.core.Loop
 import io.loop.core.LoopContext
 import io.loop.core.LoopOptions
+import kotlinx.coroutines.delay
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -136,6 +137,43 @@ class AndroidPlatformTest {
         assertEquals(0, queue.readLines().size)
     }
 
+    @Test
+    fun flushAsync_and_resetAsync_call_back_on_the_main_thread_once_done() = blockingTest {
+        val calls = Collections.synchronizedList(mutableListOf<String>())
+        // Before Loop.configure the call is dropped, but the callback still comes.
+        LoopAnalytics.flushAsync { calls.add("dropped flush, main=${isMainThread()}") }
+        awaitMainThreadCallbacks(calls, 1)
+
+        useProductionEnvironment()
+        configure()
+        LoopAnalytics.start(LoopAnalyticsOptions(flushQueueSize = 100))
+        LoopAnalytics.track("A")
+        LoopAnalytics.flushAsync { calls.add("flushed ${transport.sentNames}, main=${isMainThread()}") }
+        awaitMainThreadCallbacks(calls, 2)
+
+        val before = LoopAnalytics.deviceId
+        LoopAnalytics.resetAsync { calls.add("new device id ${LoopAnalytics.deviceId != before}, main=${isMainThread()}") }
+        awaitMainThreadCallbacks(calls, 3)
+        LoopAnalytics.flushAsync(null)
+        LoopAnalytics.resetAsync(null)
+        LoopAnalytics.flush()
+
+        assertEquals(
+            listOf("dropped flush, main=true", "flushed [A], main=true", "new device id true, main=true"),
+            calls.toList(),
+        )
+    }
+
+    /** Runs the main looper until [calls] has [n] entries (callbacks are posted there). */
+    private suspend fun awaitMainThreadCallbacks(calls: List<String>, n: Int) {
+        val deadline = System.nanoTime() + 5_000_000_000L
+        while (calls.size < n) {
+            if (System.nanoTime() > deadline) throw AssertionError("Timed out waiting for callback ${calls.size + 1}: $calls")
+            shadowOf(Looper.getMainLooper()).idle()
+            delay(5)
+        }
+    }
+
     // Process lifecycle
 
     @Test
@@ -165,6 +203,26 @@ class AndroidPlatformTest {
         owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
 
         assertEquals(listOf(false to true, true to false), seen)
+    }
+
+    @Test
+    fun a_process_lifecycle_that_was_never_initialised_is_logged_and_reports_no_state() {
+        // What a host app gets when it removes androidx.startup's ProcessLifecycleInitializer:
+        // the lifecycle never leaves INITIALIZED. Its state is unknown, not "background".
+        val log = LogRecorder().also { this.log = it }
+        val owner = TestLifecycleOwner()
+        val seen = mutableListOf<Pair<Boolean, Boolean>>()
+
+        ProcessLifecycleSource(owner).start { foreground, initial -> seen.add(foreground to initial) }
+
+        assertEquals(emptyList<Pair<Boolean, Boolean>>(), seen)
+        val warnings = log.messages(Log.Level.WARNING).filter { it.contains("ProcessLifecycleInitializer") }
+        assertEquals(log.messages(Log.Level.WARNING).toString(), 1, warnings.size)
+
+        // Should it start after all, changes are still reported.
+        owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+        owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+        assertEquals(listOf(true to false), seen)
     }
 
     @Test

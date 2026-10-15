@@ -1,5 +1,7 @@
 package io.loop.analytics
 
+import android.os.Handler
+import android.os.Looper
 import io.loop.core.Loop
 import io.loop.core.LoopConfiguration
 import kotlinx.coroutines.CompletableDeferred
@@ -101,7 +103,10 @@ public object LoopAnalytics {
     /**
      * Uploads queued events now. Returns when the queue is empty or an
      * upload failed (events stay queued and are retried later).
+     *
+     * For Kotlin coroutines. From Java, use [flushAsync] with a callback.
      */
+    @JvmSynthetic
     public suspend fun flush() {
         flushAsync().join()
     }
@@ -110,17 +115,20 @@ public object LoopAnalytics {
      * Forgets the current person: a new random device id, no user id, user
      * properties or purchaser id, and a new session. Events already queued
      * keep the identity they were tracked with. Opt-out is kept.
+     *
+     * For Kotlin coroutines. From Java, use [resetAsync] with a callback.
      */
+    @JvmSynthetic
     public suspend fun reset() {
         resetAsync().join()
     }
 
-    /** [flush] for callers without coroutines: the job completes when the flush does. */
+    /** [flush] without a coroutine: the job completes when the flush does. */
     @JvmStatic
     public fun flushAsync(): Job {
         val done = Job()
         val runtime = AnalyticsRuntime.shared
-        val queued = runtime.enqueueOperation { engine ->
+        val queued = runtime.enqueueOperation(onDropped = { done.complete() }) { engine ->
             if (engine == null) {
                 done.complete()
             } else {
@@ -140,11 +148,11 @@ public object LoopAnalytics {
         return done
     }
 
-    /** [reset] for callers without coroutines: the job completes when the new identity is in place. */
+    /** [reset] without a coroutine: the job completes when the new identity is in place. */
     @JvmStatic
     public fun resetAsync(): Job {
         val done = Job()
-        val queued = AnalyticsRuntime.shared.enqueueOperation { engine ->
+        val queued = AnalyticsRuntime.shared.enqueueOperation(onDropped = { done.complete() }) { engine ->
             try {
                 engine?.reset()
             } finally {
@@ -153,6 +161,27 @@ public object LoopAnalytics {
         }
         if (!queued) done.complete()
         return done
+    }
+
+    /**
+     * [flush] for Java and other callers without coroutines: starts the
+     * flush and returns at once. [callback], if any, runs on the main thread
+     * when the flush is done (also when the call was dropped, e.g. before
+     * `Loop.configure`).
+     */
+    @JvmStatic
+    public fun flushAsync(callback: Runnable?) {
+        callBackOnMainThread(flushAsync(), callback)
+    }
+
+    /**
+     * [reset] for Java and other callers without coroutines: starts the
+     * reset and returns at once. [callback], if any, runs on the main thread
+     * once the new identity is in place.
+     */
+    @JvmStatic
+    public fun resetAsync(callback: Runnable?) {
+        callBackOnMainThread(resetAsync(), callback)
     }
 
     /**
@@ -198,6 +227,11 @@ public object LoopAnalytics {
         return update
     }
 
+    private fun callBackOnMainThread(job: Job, callback: Runnable?) {
+        if (callback == null) return
+        job.invokeOnCompletion { Handler(Looper.getMainLooper()).post(callback) }
+    }
+
     /**
      * Runs [read] on the caller's thread, so a map the app changes later is
      * not seen half-changed. Null (logged) if reading the map throws (e.g.
@@ -216,8 +250,11 @@ public object LoopAnalytics {
  * of operations consumed by a single coroutine on [AnalyticsThread], so
  * calls run in the order they were made.
  */
-internal class AnalyticsRuntime private constructor() {
-    private val operations = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+internal class AnalyticsRuntime {
+    /** A queued call. [onDropped] runs instead of [run] if the queue stops first. */
+    private class Operation(val run: suspend () -> Unit, val onDropped: () -> Unit)
+
+    private val operations = Channel<Operation>(Channel.UNLIMITED, onUndeliveredElement = { it.onDropped() })
     private val scope = CoroutineScope(
         SupervisorJob() + AnalyticsThread.dispatcher + CoroutineExceptionHandler { _, error ->
             Log.error("LoopAnalytics stopped a task on an unexpected ${error.javaClass.name}")
@@ -235,15 +272,25 @@ internal class AnalyticsRuntime private constructor() {
     private var makeEnvironment: (LoopConfiguration) -> AnalyticsEnvironment = PRODUCTION_ENVIRONMENT
 
     init {
-        scope.launch {
+        // The consumer reports its own end below, so its handler only keeps
+        // an Error away from the app's uncaught-exception handler.
+        val consumer = scope.launch(CoroutineExceptionHandler { _, _ -> }) {
             for (operation in operations) {
                 try {
-                    operation()
+                    operation.run()
                 } catch (e: Exception) {
                     currentCoroutineContext().ensureActive()
                     Log.error("A LoopAnalytics call failed on an unexpected ${e.javaClass.name}")
                 }
             }
+        }
+        // If the consumer ever ends (an Error in a call), calls queued behind
+        // it are dropped and later ones refused, never buffered for the rest
+        // of the process.
+        consumer.invokeOnCompletion { cause ->
+            operations.cancel()
+            val reason = cause?.let { " on an unexpected ${it.javaClass.name}" }.orEmpty()
+            Log.error("LoopAnalytics call queue stopped$reason; later calls are dropped")
         }
     }
 
@@ -270,22 +317,26 @@ internal class AnalyticsRuntime private constructor() {
     /**
      * Queues [operation] with the engine it should run on (null if the
      * engine could not be built). Returns false, queuing nothing, before
-     * `Loop.configure`.
+     * `Loop.configure` or once the queue has stopped. [onDropped] runs
+     * instead of [operation] if the queue stops before reaching it.
      */
-    fun enqueueOperation(operation: suspend (AnalyticsEngine?) -> Unit): Boolean = synchronized(lock) {
+    fun enqueueOperation(
+        onDropped: () -> Unit = {},
+        operation: suspend (AnalyticsEngine?) -> Unit,
+    ): Boolean = synchronized(lock) {
         val slot = startedSlot() ?: return false
         slot.warnIfReconfigured()
-        operations.trySend { operation(slot.engine) }
-        true
+        operations.trySend(Operation({ operation(slot.engine) }, onDropped)).isSuccess
     }
 
     /** Runs [body] in the runtime's scope, outside the call queue. */
     fun launch(body: suspend () -> Unit): Job = scope.launch { body() }
 
-    /** Test hook: returns once every call queued so far has run. */
+    /** Test hook: returns once every call queued so far has run (or was dropped). */
     suspend fun waitForPendingCalls() {
         val done = CompletableDeferred<Unit>()
-        operations.trySend { done.complete(Unit) }
+        val finish = { done.complete(Unit) }
+        if (operations.trySend(Operation({ finish() }, { finish() })).isFailure) return
         done.await()
     }
 
@@ -295,7 +346,7 @@ internal class AnalyticsRuntime private constructor() {
             slot = null
             startOptions = null
             makeEnvironment = environment ?: PRODUCTION_ENVIRONMENT
-            operations.trySend { previous?.engine?.dispose() }
+            operations.trySend(Operation({ previous?.engine?.dispose() }, {}))
         }
     }
 
@@ -314,14 +365,18 @@ internal class AnalyticsRuntime private constructor() {
         val options = startOptions ?: LoopAnalyticsOptions()
         val makeEnvironment = this.makeEnvironment
         // Queued first, so every call queued after it finds the engine built.
-        operations.trySend {
-            slot.engine = AnalyticsEngine.create(
-                apiKey = configuration.apiKey,
-                serverUrl = configuration.options.serverUrl,
-                options = options,
-                environment = makeEnvironment(configuration),
-            )
-        }
+        val create = Operation(
+            run = {
+                slot.engine = AnalyticsEngine.create(
+                    apiKey = configuration.apiKey,
+                    serverUrl = configuration.options.serverUrl,
+                    options = options,
+                    environment = makeEnvironment(configuration),
+                )
+            },
+            onDropped = {},
+        )
+        operations.trySend(create)
         return slot
     }
 

@@ -69,14 +69,16 @@ internal class AnalyticsEngine private constructor(
      * Starts lifecycle observation and the flush timer, and fixes the batch
      * left from the previous run before returning, so the app's first
      * `track()` cannot join it; that batch then uploads in the background.
+     *
+     * The timer runs until the lifecycle reports the background (then it
+     * pauses until the foreground), so a lifecycle that never reports still
+     * gets periodic uploads.
      */
     private suspend fun start() {
         environment.lifecycle.start { foreground, initial ->
             if (!gate.isClosed) work.spawn { onLifecycle(foreground, initial) }
         }
-        timer = environment.scheduler.every(options.flushIntervalMillis) {
-            work.spawn { onTick() }
-        }
+        startTimer()
         contextSnapshot()
         publish()
         if (store.count > 0) {
@@ -225,8 +227,7 @@ internal class AnalyticsEngine private constructor(
             // The gate first: from here no drain sends another batch.
             gate.close()
             disposed = true
-            timer?.cancel()
-            timer = null
+            stopTimer()
             true
         }
         if (!disposing) return
@@ -238,23 +239,43 @@ internal class AnalyticsEngine private constructor(
     private suspend fun onLifecycle(foreground: Boolean, initial: Boolean) {
         if (disposed) return
         if (initial) {
-            // Starting in the foreground starts or continues the session but
-            // is not itself a lifecycle event: nothing is uploaded for it.
+            // The state at start is not itself a lifecycle event: nothing is
+            // uploaded for it. The foreground starts or continues the
+            // session; the background only stops the timer.
             if (foreground) {
                 session.onForeground()
                 publish()
+            } else {
+                stopTimer()
             }
             return
         }
         if (foreground) {
             session.onForeground()
             publish()
+            startTimer()
             if (store.count > 0) uploader.flush()
         } else {
             session.onBackground()
             publish()
-            uploader.flush()
+            flushInBackground()
+            // No periodic wake-ups while in the background; the flush just
+            // started still runs.
+            stopTimer()
         }
+    }
+
+    /** Starts the periodic flush unless it is running (or the engine is disposed). */
+    private fun startTimer() {
+        if (timer != null || disposed) return
+        timer = environment.scheduler.every(options.flushIntervalMillis) {
+            work.spawn { onTick() }
+        }
+    }
+
+    private fun stopTimer() {
+        timer?.cancel()
+        timer = null
     }
 
     private suspend fun onTick() {

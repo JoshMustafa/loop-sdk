@@ -60,6 +60,20 @@ internal class ProcessLifecycleSource(
             },
         )
         registering = false
-        onState(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED), true)
+        val state = lifecycle.currentState
+        if (state == Lifecycle.State.INITIALIZED) {
+            // ProcessLifecycleOwner moves to CREATED when androidx.startup
+            // initialises it, before Application.onCreate. Still INITIALIZED
+            // means the app removed that initializer; it cannot be run late
+            // (ProcessLifecycleInitializer refuses lazy initialisation). The
+            // state is unknown: report none, so the flush timer keeps running.
+            Log.warning(
+                "The process lifecycle is not running, so analytics cannot flush on going to the background or " +
+                    "foreground. Keep androidx.lifecycle.ProcessLifecycleInitializer under androidx.startup's " +
+                    "InitializationProvider in the app manifest.",
+            )
+            return
+        }
+        onState(state.isAtLeast(Lifecycle.State.STARTED), true)
     }
 }

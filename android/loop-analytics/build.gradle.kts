@@ -42,7 +42,8 @@ kotlin {
 
 dependencies {
     api(project(":loop-core"))
-    implementation(libs.kotlinx.coroutines.android)
+    // api: LoopAnalytics.flushAsync()/resetAsync() return a coroutines Job.
+    api(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.lifecycle.process)
 
     testImplementation(libs.junit)
