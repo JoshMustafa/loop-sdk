@@ -32,6 +32,10 @@ android {
 }
 
 kotlin {
+    // The kotlin-stdlib the POM depends on. A Kotlin 1.9 compiler cannot read
+    // 2.2's metadata, so depend on 2.0.0 (the oldest kotlinx-coroutines 1.9
+    // needs anyway); apps on newer Kotlin resolve their own, newer stdlib.
+    coreLibrariesVersion = "2.0.0"
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_1_8)
         // Built with Kotlin 2.2, but emits 1.9 metadata and uses only the 1.9
