@@ -1,5 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-  package="io.loop.flutter">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- From the native loop-analytics module: uploads events. -->
     <uses-permission android:name="android.permission.INTERNET" />
 </manifest>

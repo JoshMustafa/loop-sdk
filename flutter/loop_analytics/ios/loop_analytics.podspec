@@ -10,15 +10,14 @@ Pod::Spec.new do |s|
   s.platform         = :ios, '16.0'
   s.swift_version    = '5.9'
 
-  # The native LoopCore and LoopAnalytics modules are compiled from the
-  # monorepo checkout. CocoaPods only globs files under this directory and
-  # does not descend into symlinked directories, so Classes/Vendor holds a
-  # per-file symlink to each native source (tool/link_native_sources.sh).
-  s.source_files = [
-    'Classes/*.swift',
-    'Classes/Vendor/LoopCore/**/*.swift',
-    'Classes/Vendor/LoopAnalytics/**/*.swift',
-  ]
+  # The plugin's own sources and, under Classes/Vendor, the native LoopCore
+  # and LoopAnalytics modules compiled from the monorepo checkout: one
+  # recursive glob, so each file is listed once. CocoaPods only globs files
+  # under this directory and does not descend into symlinked directories,
+  # so Classes/Vendor holds a per-file symlink to each native source
+  # (tool/link_native_sources.sh). (`exclude_files` would apply to every
+  # pattern, so Vendor cannot be excluded here and listed separately.)
+  s.source_files = 'Classes/**/*.swift'
   s.resource_bundles = {
     'LoopCore_privacy' => ['Classes/Vendor/LoopCore/PrivacyInfo.xcprivacy'],
     'LoopAnalytics_privacy' => ['Classes/Vendor/LoopAnalytics/PrivacyInfo.xcprivacy'],

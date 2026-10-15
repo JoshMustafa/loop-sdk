@@ -2,53 +2,138 @@ package io.loop.flutter
 
 import android.content.Context
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.loop.analytics.Log
+import io.loop.analytics.LoopAnalytics
+import io.loop.analytics.LoopAnalyticsOptions
 import io.loop.core.Loop
+import io.loop.core.LoopOptions
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
-/** LoopAnalyticsPlugin */
+/**
+ * The Pigeon [LoopAnalyticsHostApi], forwarded to the native `Loop` and
+ * `LoopAnalytics` modules compiled into this plugin.
+ */
 class LoopAnalyticsPlugin : FlutterPlugin, LoopAnalyticsHostApi {
-  private lateinit var context: Context
+    private lateinit var applicationContext: Context
 
-  override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-    context = binding.applicationContext
-    LoopAnalyticsHostApi.setUp(binding.binaryMessenger, this)
-  }
+    /** Runs the suspending calls; cancelled when the engine detaches. */
+    private lateinit var scope: CoroutineScope
 
-  override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-    LoopAnalyticsHostApi.setUp(binding.binaryMessenger, null)
-  }
+    override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        applicationContext = binding.applicationContext
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        LoopAnalyticsHostApi.setUp(binding.binaryMessenger, this)
+    }
 
-  // TEMPORARY (Task 2): no-op host API so the Pigeon channel is registered
-  // and the plugin compiles. Task 3 replaces it with calls into the native SDK.
+    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        LoopAnalyticsHostApi.setUp(binding.binaryMessenger, null)
+        // Pending flush/reset calls reply with an error (see replyWhenDone).
+        scope.cancel()
+    }
 
-  override fun configure(apiKey: String, options: NativeOptions, callback: (Result<Unit>) -> Unit) {
-    // Keeps the Task 1 proof that the native loop-core sources link.
-    Loop.configure(context, apiKey)
-    callback(Result.success(Unit))
-  }
+    override fun configure(apiKey: String, options: NativeOptions, callback: (Result<Unit>) -> Unit) {
+        try {
+            if (apiKey.isBlank()) Log.warning("LoopAnalytics.init was given an empty API key")
+            val loopOptions = options.serverUrl?.let { LoopOptions(serverUrl = it) } ?: LoopOptions()
+            // A second configure (e.g. after a hot restart) replaces the
+            // configuration; start then only logs that it was ignored.
+            Loop.configure(applicationContext, apiKey, loopOptions)
+            LoopAnalytics.start(options.toAnalyticsOptions())
+            callback(Result.success(Unit))
+        } catch (e: Exception) {
+            callback(Result.failure(e))
+        }
+    }
 
-  override fun track(name: String, properties: Map<String?, Any?>) {}
+    override fun track(name: String, properties: Map<String?, Any?>) {
+        LoopAnalytics.track(name, stringKeyed(properties))
+    }
 
-  override fun setUserId(userId: String?) {}
+    override fun setUserId(userId: String?) {
+        LoopAnalytics.setUserId(userId)
+    }
 
-  override fun setUserProperties(properties: Map<String?, Any?>) {}
+    override fun setUserProperties(properties: Map<String?, Any?>) {
+        LoopAnalytics.setUserProperties(stringKeyed(properties))
+    }
 
-  override fun setPurchaserId(purchaserId: String?) {}
+    override fun setPurchaserId(purchaserId: String?) {
+        LoopAnalytics.setPurchaserId(purchaserId)
+    }
 
-  override fun flush(callback: (Result<Unit>) -> Unit) {
-    callback(Result.success(Unit))
-  }
+    override fun flush(callback: (Result<Unit>) -> Unit) {
+        replyWhenDone(callback) { LoopAnalytics.flush() }
+    }
 
-  override fun reset(callback: (Result<Unit>) -> Unit) {
-    callback(Result.success(Unit))
-  }
+    override fun reset(callback: (Result<Unit>) -> Unit) {
+        replyWhenDone(callback) { LoopAnalytics.reset() }
+    }
 
-  override fun setOptOut(optOut: Boolean) {}
+    override fun setOptOut(optOut: Boolean) {
+        LoopAnalytics.setOptOut(optOut)
+    }
 
-  override fun deviceId(callback: (Result<String?>) -> Unit) {
-    callback(Result.success(null))
-  }
+    override fun deviceId(callback: (Result<String?>) -> Unit) {
+        callback(Result.success(LoopAnalytics.deviceId))
+    }
 
-  override fun sessionId(callback: (Result<Long?>) -> Unit) {
-    callback(Result.success(null))
-  }
+    override fun sessionId(callback: (Result<Long?>) -> Unit) {
+        callback(Result.success(LoopAnalytics.sessionId))
+    }
+
+    /**
+     * Runs [body] in [scope] and replies exactly once: with its result, its
+     * exception, or an error if the scope is cancelled first (also when it
+     * was already cancelled, so the body never ran).
+     */
+    private fun <T> replyWhenDone(callback: (Result<T>) -> Unit, body: suspend () -> T) {
+        val replied = AtomicBoolean(false)
+        val reply = { result: Result<T> -> if (replied.compareAndSet(false, true)) callback(result) }
+        val job = scope.launch {
+            val result = try {
+                Result.success(body())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+            reply(result)
+        }
+        job.invokeOnCompletion { cause ->
+            if (cause != null) {
+                reply(Result.failure(LoopAnalyticsPigeonError("cancelled", "the Flutter engine detached", null)))
+            }
+        }
+    }
 }
+
+/** [NativeOptions] as the native [LoopAnalyticsOptions]; counts outside the Int range are clamped. */
+internal fun NativeOptions.toAnalyticsOptions(): LoopAnalyticsOptions = LoopAnalyticsOptions(
+    flushQueueSize = flushQueueSize.clampToInt(),
+    flushIntervalMillis = flushIntervalMillis,
+    minTimeBetweenSessionsMillis = minTimeBetweenSessionsMillis,
+    maxQueueSize = maxQueueSize.clampToInt(),
+    maxBatchSize = maxBatchSize.clampToInt(),
+    legacyDeviceId = legacyDeviceId,
+)
+
+/**
+ * A Pigeon properties map with its null keys dropped. Null values stay, so
+ * `setUserProperties` can remove those keys; nested maps and lists are
+ * passed on as they are, for the native sanitiser.
+ */
+internal fun stringKeyed(properties: Map<String?, Any?>): Map<String, Any?> {
+    val out = LinkedHashMap<String, Any?>(properties.size)
+    for ((key, value) in properties) {
+        if (key != null) out[key] = value
+    }
+    return out
+}
+
+private fun Long.clampToInt(): Int = coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt()

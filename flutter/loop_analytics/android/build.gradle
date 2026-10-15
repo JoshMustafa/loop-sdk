@@ -36,10 +36,9 @@ android {
 
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_11
-        // As the native modules build (android/loop-*/build.gradle.kts).
-        languageVersion = "1.9"
-        apiVersion = "1.9"
-        freeCompilerArgs += ["-Xsuppress-version-warnings", "-opt-in=io.loop.core.InternalLoopApi"]
+        // The host app compiles these sources with its own Kotlin (1.9 or
+        // later); the native modules' internal API is used across files.
+        freeCompilerArgs += ["-opt-in=io.loop.core.InternalLoopApi"]
     }
 
     sourceSets {
