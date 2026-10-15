@@ -35,7 +35,12 @@ extension LoopAnalyticsPlugin: LoopAnalyticsHostApi {
     // configuration; start then only logs that it was ignored.
     Loop.configure(apiKey: apiKey, options: loopOptions)
     LoopAnalytics.start(options: Self.analyticsOptions(options))
-    completion(.success(()))
+    // Replies once the engine is built, so deviceId is set when init
+    // returns. Awaited, never blocked on: the build hops to the main actor.
+    Task { @MainActor in
+      await AnalyticsRuntime.shared.waitForPendingCalls()
+      completion(.success(()))
+    }
   }
 
   func track(name: String, properties: [String?: Any?]) {

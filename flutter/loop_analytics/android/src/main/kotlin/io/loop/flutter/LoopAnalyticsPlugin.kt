@@ -2,6 +2,7 @@ package io.loop.flutter
 
 import android.content.Context
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.loop.analytics.AnalyticsRuntime
 import io.loop.analytics.Log
 import io.loop.analytics.LoopAnalytics
 import io.loop.analytics.LoopAnalyticsOptions
@@ -33,7 +34,7 @@ class LoopAnalyticsPlugin : FlutterPlugin, LoopAnalyticsHostApi {
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         LoopAnalyticsHostApi.setUp(binding.binaryMessenger, null)
-        // Pending flush/reset calls reply with an error (see replyWhenDone).
+        // Pending configure/flush/reset calls reply with an error (see replyWhenDone).
         scope.cancel()
     }
 
@@ -45,10 +46,12 @@ class LoopAnalyticsPlugin : FlutterPlugin, LoopAnalyticsHostApi {
             // configuration; start then only logs that it was ignored.
             Loop.configure(applicationContext, apiKey, loopOptions)
             LoopAnalytics.start(options.toAnalyticsOptions())
-            callback(Result.success(Unit))
         } catch (e: Exception) {
             callback(Result.failure(e))
+            return
         }
+        // Replies once the engine is built, so deviceId is set when init returns.
+        replyWhenDone(callback) { AnalyticsRuntime.shared.waitForPendingCalls() }
     }
 
     override fun track(name: String, properties: Map<String?, Any?>) {
