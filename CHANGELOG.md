@@ -22,6 +22,12 @@ Each module is its own SwiftPM product and CocoaPods pod (tags have no `v` prefi
 - `kotlinx-coroutines-android` is an `api` dependency.
 - A minimal sample app in `android/sample/` (not published).
 
+### Flutter
+
+- **loop_analytics** (new) Flutter plugin in `flutter/loop_analytics`, backed by the native LoopAnalytics (iOS) and loop-analytics (Android) modules. It replaces the pure-Dart SDK, so Flutter apps share the native wire format, defaults and behaviour.
+- Installed as a git dependency (`url: https://github.com/JoshMustafa/loop-sdk.git`, `path: flutter/loop_analytics`, `ref: 2.0.0`). iOS 16+, Android minSdk 21, Kotlin 1.9+ in the host app.
+- Same Dart API as the pure-Dart SDK, except `deviceId()` and `sessionId()` are now async. Calls made before `init` completes are buffered (up to 1000) and sent in order.
+
 ### Renamed
 
 | 1.x | 2.0.0 |

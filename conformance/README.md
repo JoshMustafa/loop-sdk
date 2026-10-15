@@ -6,9 +6,11 @@ through them:
 
 | Platform | Runner | Command |
 |---|---|---|
-| Dart (reference) | `loop-sdk-flutter/test/conformance_test.dart` | `flutter test test/conformance_test.dart` (in `loop-sdk-flutter`) |
+| Dart (reference) | `loop-sdk-flutter/test/conformance_test.dart` | `flutter test test/conformance_test.dart` (in the separate, retired `loop-sdk-flutter` repo) |
 | iOS (Swift) | `loop-sdk-ios/ios/Tests/LoopAnalyticsTests/ConformanceTests.swift` | `swift test --filter ConformanceTests` (in `loop-sdk-ios`) |
 | Android (Kotlin) | `loop-sdk-ios/android/loop-analytics/src/test/kotlin/io/loop/analytics/conformance/ConformanceTest.kt` | `cd android && ./gradlew :loop-analytics:testDebugUnitTest --tests '*ConformanceTest*'` (in `loop-sdk-ios`) |
+
+The Flutter plugin (`flutter/loop_analytics`) has no runner of its own: it forwards every call to the native SDK, so its behaviour is covered by the iOS and Android runners plus the plugin's integration tests.
 
 Cases live in `cases/<area>/NN-slug.json` (today only `cases/analytics/`).
 `schema.json` is a JSON Schema (draft 2020-12) for a case file.

@@ -175,7 +175,7 @@ class LoopAnalytics {
 
   /// Uploads queued events now. Completes when the queue is empty or an
   /// upload failed (events stay queued and are retried with backoff; a
-  /// flush during backoff waits for the next attempt time).
+  /// flush during backoff returns at once and sends nothing).
   Future<void> flush() => _request('flush', _api.flush);
 
   /// Forgets the current person: a new random device id, no user id, user

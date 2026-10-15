@@ -19,7 +19,7 @@ Native SwiftUI on iOS (no WebView), survives offline, anonymous by default. Conf
 | **LoopCore** | API key, ids, networking, device info. Every module depends on it. | ✅ | ✅ | (inside each plugin) |
 | **LoopFeedback** | Bug & feature reporter UI: lists, votes, replies, new reports, optional email | ✅ | later | later |
 | **LoopDiagnostics** | Breadcrumbs and captured problems | ✅ | later | later |
-| **LoopAnalytics** | Events, user id, user properties, sessions | ✅ | ✅ | planned |
+| **LoopAnalytics** | Events, user id, user properties, sessions | ✅ | ✅ | ✅ |
 
 Modules never depend on each other, so an app that only wants feedback doesn't ship analytics, and vice versa.
 
@@ -59,6 +59,19 @@ implementation("com.github.JoshMustafa.loop-sdk:loop-analytics:2.0.0")
 ```
 
 Requires minSdk 21. `kotlinx-coroutines-android` is an `api` dependency (the async `flushAsync()`/`resetAsync()` return a coroutines `Job`); `androidx.lifecycle:lifecycle-process` is pulled in for foreground/background detection.
+
+**Flutter.** Add the plugin as a git dependency in `pubspec.yaml`:
+
+```yaml
+dependencies:
+  loop_analytics:
+    git:
+      url: https://github.com/JoshMustafa/loop-sdk.git
+      path: flutter/loop_analytics
+      ref: 2.0.0
+```
+
+No Podfile or JitPack lines are needed: the plugin compiles the native sources from the checkout. Requires iOS 16+, Android minSdk 21, and Kotlin 1.9 or newer in the host app (coroutines 1.9 needs it).
 
 ## Quick start
 
@@ -188,7 +201,25 @@ Android notes:
 - The 30 s upload timer pauses while the app is in the background.
 - A sample app lives in `android/sample/` (`./gradlew :sample:assembleDebug` from `android/`, with your key in place of `loop_pk_REPLACE_ME`). It is not published.
 
+## Flutter quick start
 
+```dart
+import 'package:loop_analytics/loop_analytics.dart';
+
+await LoopAnalytics.init(
+  apiKey: 'loop_pk_…',
+  options: LoopOptions(legacyDeviceId: previousSdkDeviceId), // optional
+);
+
+final loop = LoopAnalytics.instance!;
+loop.track('Item Viewed', {'Index': 1});
+loop.setUserId('12345');                       // null when signed out
+loop.setUserProperties({'Plan': 'annual'});    // a null value removes a property
+loop.setPurchaserId(revenueCatAppUserId);
+final deviceId = await loop.deviceId();        // async in the plugin
+```
+
+The plugin forwards every call to the native SDK, so behaviour and defaults match iOS and Android. `LoopAnalytics.instance` is set as soon as `init` is called; calls made before `init` completes are buffered (up to 1000, oldest dropped) and sent in order. `flush()`, `reset()`, `deviceId()` and `sessionId()` are async; `deviceId()` and `sessionId()` were getters in the pure-Dart SDK and are the only API change. See [flutter/loop_analytics/README.md](./flutter/loop_analytics/README.md) for options and notes.
 
 ## Migrating from `LoopSDK`
 
@@ -279,9 +310,10 @@ ios/Sources/           LoopCore, LoopFeedback, LoopDiagnostics, LoopAnalytics
 ios/Tests/             one test target per module + shared LoopTestSupport
 ios/Examples/          minimal SwiftUI host app (see its README)
 android/               loop-core, loop-analytics (Gradle) and a sample app
+flutter/loop_analytics Flutter plugin over the native modules, with an example app
 ```
 
-Flutter (`flutter/`) lands in a later release. Every platform shares one conformance suite so they all behave the same.
+Every platform shares one conformance suite so they all behave the same.
 
 ## Tests
 
@@ -303,6 +335,22 @@ The Android runner (from `android/`):
 ```bash
 ./gradlew :loop-analytics:testDebugUnitTest --tests '*ConformanceTest*'
 ```
+
+The Flutter plugin (from `flutter/loop_analytics`):
+
+```bash
+cd flutter/loop_analytics && flutter test
+```
+
+Its integration tests run on a device or simulator with `cd example && flutter test integration_test -d <device>`. CI does not run them.
+
+## CI
+
+Three GitHub Actions workflows in `.github/workflows/`:
+
+- `ios.yml`: `swift test`, the iOS build and `pod lib lint` for each podspec.
+- `android.yml`: Gradle unit tests (conformance included), the sample app build, lint and a JitPack build simulation.
+- `flutter.yml`: `flutter analyze`, `flutter test`, the native-source link and license checks, and debug Android and iOS simulator builds of the example app.
 
 ## License
 
