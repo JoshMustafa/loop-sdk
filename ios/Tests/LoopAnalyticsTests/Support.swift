@@ -155,8 +155,10 @@ final class RecordingTransport: AnalyticsTransport, @unchecked Sendable {
         return (replies.isEmpty ? nil : replies.removeFirst(), held)
     }
 
-    /// Polls (real time) until at least `n` requests were recorded.
-    func waitForRequests(_ n: Int, timeout: TimeInterval = 2) async throws {
+    /// Polls (real time) until at least `n` requests were recorded. The limit
+    /// is generous because shared CI simulators can run 10-20x slower than a
+    /// laptop; a correct SDK returns within milliseconds either way.
+    func waitForRequests(_ n: Int, timeout: TimeInterval = 15) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         while requests.count < n {
             guard Date() < deadline else { throw TimedOut(what: "\(n) request(s); got \(requests.count)") }

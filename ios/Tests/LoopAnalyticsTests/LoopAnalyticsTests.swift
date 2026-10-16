@@ -220,7 +220,8 @@ final class LoopAnalyticsTests: XCTestCase {
         LoopAnalytics.track("B")
 
         // B reaches the queue file while the request for A still hangs.
-        let deadline = Date().addingTimeInterval(1)
+        // (Upper bound sized for slow CI simulators; locally this takes ms.)
+        let deadline = Date().addingTimeInterval(10)
         while !h.queueFileLines().contains(where: { $0.contains(#""name":"B""#) }) {
             guard Date() < deadline else { return XCTFail("B was not queued while the upload hung") }
             try await Task.sleep(nanoseconds: 5_000_000)

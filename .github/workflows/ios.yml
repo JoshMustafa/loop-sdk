@@ -64,6 +64,12 @@ jobs:
           xcrun simctl list devices available | grep "$udid"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
 
+      # Boot first so the tests don't compete with the simulator starting up.
+      - name: Boot the simulator
+        run: |
+          xcrun simctl boot "${{ steps.simulator.outputs.udid }}" || true
+          xcrun simctl bootstatus "${{ steps.simulator.outputs.udid }}" -b
+
       - name: LoopAnalyticsTests on iOS Simulator
         run: |
           xcodebuild test \
