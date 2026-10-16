@@ -1,0 +1,28 @@
+name: loop_analytics
+description: "Loop product analytics for Flutter, backed by the native Loop SDK."
+version: 2.0.0
+homepage: https://github.com/JoshMustafa/loop-sdk
+publish_to: none
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  pigeon: 22.7.4
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: io.loop.flutter
+        pluginClass: LoopAnalyticsPlugin
+      ios:
+        pluginClass: LoopAnalyticsPlugin

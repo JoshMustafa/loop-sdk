@@ -1,0 +1,57 @@
+{
+  "name": "a full queue drops the oldest 20 events",
+  "options": {"maxQueueSize": 25, "flushQueueSize": 1000, "flushIntervalMs": 86400000},
+  "steps": [
+    {"op": "track", "name": "E1"},
+    {"op": "track", "name": "E2"},
+    {"op": "track", "name": "E3"},
+    {"op": "track", "name": "E4"},
+    {"op": "track", "name": "E5"},
+    {"op": "track", "name": "E6"},
+    {"op": "track", "name": "E7"},
+    {"op": "track", "name": "E8"},
+    {"op": "track", "name": "E9"},
+    {"op": "track", "name": "E10"},
+    {"op": "track", "name": "E11"},
+    {"op": "track", "name": "E12"},
+    {"op": "track", "name": "E13"},
+    {"op": "track", "name": "E14"},
+    {"op": "track", "name": "E15"},
+    {"op": "track", "name": "E16"},
+    {"op": "track", "name": "E17"},
+    {"op": "track", "name": "E18"},
+    {"op": "track", "name": "E19"},
+    {"op": "track", "name": "E20"},
+    {"op": "track", "name": "E21"},
+    {"op": "track", "name": "E22"},
+    {"op": "track", "name": "E23"},
+    {"op": "track", "name": "E24"},
+    {"op": "track", "name": "E25"},
+    {"op": "track", "name": "E26"},
+    {"op": "track", "name": "E27"},
+    {"op": "track", "name": "E28"},
+    {"op": "track", "name": "E29"},
+    {"op": "track", "name": "E30"},
+    {"op": "check", "queueLength": 10},
+    {"op": "flush"}
+  ],
+  "expect": {
+    "requests": [
+      {
+        "$partial": true,
+        "events": [
+          {"$partial": true, "name": "E21"},
+          {"$partial": true, "name": "E22"},
+          {"$partial": true, "name": "E23"},
+          {"$partial": true, "name": "E24"},
+          {"$partial": true, "name": "E25"},
+          {"$partial": true, "name": "E26"},
+          {"$partial": true, "name": "E27"},
+          {"$partial": true, "name": "E28"},
+          {"$partial": true, "name": "E29"},
+          {"$partial": true, "name": "E30"}
+        ]
+      }
+    ]
+  }
+}

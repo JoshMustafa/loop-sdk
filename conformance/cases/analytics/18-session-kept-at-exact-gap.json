@@ -1,0 +1,27 @@
+{
+  "name": "a background gap of exactly minTimeBetweenSessions keeps the session",
+  "options": {"flushIntervalMs": 86400000},
+  "steps": [
+    {"op": "track", "name": "A"},
+    {"op": "lifecycle", "state": "background"},
+    {"op": "advance", "ms": 300000},
+    {"op": "lifecycle", "state": "foreground"},
+    {"op": "track", "name": "B"},
+    {"op": "flush"}
+  ],
+  "expect": {
+    "requests": [
+      {"$partial": true, "events": [{"$partial": true, "name": "A"}]},
+      {
+        "$partial": true,
+        "events": [
+          {
+            "$partial": true,
+            "name": "B",
+            "sessionId": 1767225600000
+          }
+        ]
+      }
+    ]
+  }
+}

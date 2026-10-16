@@ -1,0 +1,20 @@
+{
+  "name": "a success resets the backoff: the next 5xx waits 30 s again, not 60 s",
+  "steps": [
+    {"op": "respond", "status": 503},
+    {"op": "respond", "status": 202, "body": "{\"accepted\":1,\"dropped\":0}"},
+    {"op": "respond", "status": 503},
+    {"op": "track", "name": "E1"},
+    {"op": "flush"},
+    {"op": "advance", "ms": 30000},
+    {"op": "check", "requests": 2, "queueLength": 0},
+    {"op": "track", "name": "E2"},
+    {"op": "flush"},
+    {"op": "check", "requests": 3, "queueLength": 1},
+    {"op": "advance", "ms": 29999},
+    {"op": "check", "requests": 3},
+    {"op": "advance", "ms": 1},
+    {"op": "check", "requests": 4}
+  ],
+  "expect": {"queueLength": 0}
+}

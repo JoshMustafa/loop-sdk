@@ -1,0 +1,40 @@
+{
+  "name": "413 halves the batch and retries at once",
+  "options": {"maxBatchSize": 4},
+  "steps": [
+    {"op": "respond", "status": 413},
+    {"op": "track", "name": "E1"},
+    {"op": "track", "name": "E2"},
+    {"op": "track", "name": "E3"},
+    {"op": "track", "name": "E4"},
+    {"op": "flush"}
+  ],
+  "expect": {
+    "requests": [
+      {
+        "$partial": true,
+        "events": [
+          {"$partial": true, "name": "E1"},
+          {"$partial": true, "name": "E2"},
+          {"$partial": true, "name": "E3"},
+          {"$partial": true, "name": "E4"}
+        ]
+      },
+      {
+        "$partial": true,
+        "events": [
+          {"$partial": true, "name": "E1"},
+          {"$partial": true, "name": "E2"}
+        ]
+      },
+      {
+        "$partial": true,
+        "events": [
+          {"$partial": true, "name": "E3"},
+          {"$partial": true, "name": "E4"}
+        ]
+      }
+    ],
+    "queueLength": 0
+  }
+}

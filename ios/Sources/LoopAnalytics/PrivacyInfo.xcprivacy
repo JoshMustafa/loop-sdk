@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSPrivacyTracking</key>
+  <false/>
+  <key>NSPrivacyTrackingDomains</key>
+  <array/>
+  <key>NSPrivacyCollectedDataTypes</key>
+  <array>
+    <!-- Every event carries the device id, the app's user id (when set), the
+         event itself and its properties, and context (app version, device
+         model, locale, RevenueCat purchaser id). All of it is stored against
+         the device/user id, so it is linked; it is used only for the app
+         developer's own analytics, never to track across apps or companies,
+         so it is not tracking and NSPrivacyTracking stays false. -->
+    <dict>
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeDeviceID</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+      </array>
+    </dict>
+    <dict>
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeUserID</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+      </array>
+    </dict>
+    <dict>
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeProductInteraction</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+      </array>
+    </dict>
+    <dict>
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeOtherDataTypes</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+      </array>
+    </dict>
+  </array>
+  <key>NSPrivacyAccessedAPITypes</key>
+  <array>
+    <dict>
+      <!-- Device id, user id, session and opt-out state are kept in the SDK's
+           own UserDefaults suite and only read back by the SDK itself. -->
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+      <key>NSPrivacyAccessedAPITypeReasons</key>
+      <array>
+        <string>CA92.1</string>
+      </array>
+    </dict>
+  </array>
+</dict>
+</plist>

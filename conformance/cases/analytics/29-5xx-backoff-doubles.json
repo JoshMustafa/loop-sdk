@@ -1,0 +1,24 @@
+{
+  "name": "repeated 5xx doubles the backoff: 30 s, then 60 s, then 120 s",
+  "steps": [
+    {"op": "respond", "status": 503},
+    {"op": "respond", "status": 503},
+    {"op": "respond", "status": 503},
+    {"op": "track", "name": "E1"},
+    {"op": "flush"},
+    {"op": "check", "requests": 1},
+    {"op": "advance", "ms": 29999},
+    {"op": "check", "requests": 1},
+    {"op": "advance", "ms": 1},
+    {"op": "check", "requests": 2},
+    {"op": "advance", "ms": 59999},
+    {"op": "check", "requests": 2},
+    {"op": "advance", "ms": 1},
+    {"op": "check", "requests": 3},
+    {"op": "advance", "ms": 119999},
+    {"op": "check", "requests": 3},
+    {"op": "advance", "ms": 1},
+    {"op": "check", "requests": 4, "queueLength": 0}
+  ],
+  "expect": {"queueLength": 0}
+}

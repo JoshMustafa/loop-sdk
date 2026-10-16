@@ -1,0 +1,17 @@
+{
+  "name": "the legacy device id is never adopted again after reset()",
+  "options": {"legacyDeviceId": "LEGACY-ID"},
+  "steps": [
+    {"op": "track", "name": "A"},
+    {"op": "reset"},
+    {"op": "restart"},
+    {"op": "track", "name": "B"},
+    {"op": "flush"}
+  ],
+  "expect": {
+    "requests": [
+      {"$partial": true, "events": [{"$partial": true, "name": "A", "deviceId": "LEGACY-ID"}]},
+      {"$partial": true, "events": [{"$partial": true, "name": "B", "deviceId": "DEVICE-1R"}]}
+    ]
+  }
+}

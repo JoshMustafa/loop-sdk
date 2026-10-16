@@ -1,0 +1,21 @@
+{
+  "name": "reaching flushQueueSize uploads at once",
+  "options": {"flushQueueSize": 3},
+  "steps": [
+    {"op": "track", "name": "E1"},
+    {"op": "track", "name": "E2"},
+    {"op": "track", "name": "E3"}
+  ],
+  "expect": {
+    "requests": [
+      {
+        "$partial": true,
+        "events": [
+          {"$partial": true, "name": "E1"},
+          {"$partial": true, "name": "E2"},
+          {"$partial": true, "name": "E3"}
+        ]
+      }
+    ]
+  }
+}

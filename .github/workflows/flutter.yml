@@ -1,0 +1,125 @@
+name: Flutter
+
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Superseded runs on branches and PRs are cancelled; every main run completes.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+# Integration tests (example/integration_test) are not run in CI: they need a
+# booted iOS simulator and Android emulator. Run them locally on both before
+# a release.
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: flutter/loop_analytics
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.32.8
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: |
+          flutter pub get
+          (cd example && flutter pub get)
+
+      - name: flutter analyze
+        run: flutter analyze
+
+      - name: flutter test
+        run: flutter test
+
+      # The plugin compiles the native iOS sources through committed per-file
+      # symlinks. Re-running the link script must leave the tree unchanged.
+      - name: iOS vendor symlinks match ios/Sources
+        working-directory: .
+        run: |
+          flutter/loop_analytics/tool/link_native_sources.sh
+          git diff --exit-code -- flutter/loop_analytics/ios/Classes/Vendor
+          untracked=$(git status --porcelain -- flutter/loop_analytics/ios/Classes/Vendor)
+          if [ -n "$untracked" ]; then
+            echo "Vendor symlinks are out of date; run tool/link_native_sources.sh and commit:" >&2
+            echo "$untracked" >&2
+            exit 1
+          fi
+          # Every native source file must be vendored. The link script only
+          # mirrors .swift and PrivacyInfo.xcprivacy, so a new file type in
+          # ios/Sources fails here until the script handles it.
+          sources=$(cd ios/Sources && find LoopCore LoopAnalytics -type f | sort)
+          vendored=$(cd flutter/loop_analytics/ios/Classes/Vendor && find LoopCore LoopAnalytics -type l | sort)
+          if [ -z "$sources" ] || [ -z "$vendored" ]; then
+            echo "Empty file listing: ios/Sources or ios/Classes/Vendor has no files" >&2
+            exit 1
+          fi
+          diff -u <(echo "$sources") <(echo "$vendored")
+
+      - name: Plugin LICENSE matches the repo LICENSE
+        working-directory: .
+        run: cmp LICENSE flutter/loop_analytics/LICENSE
+
+  build-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: flutter/loop_analytics/example
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.32.8
+          channel: stable
+          cache: true
+
+      - name: flutter build apk --debug
+        run: flutter build apk --debug
+
+  build-ios:
+    # Pinned runner image and Xcode so CI matches local development (Xcode
+    # 26.0.1). macos-15 ships Xcode 26.0.1 alongside 16.x (runner-images
+    # macos-15 README, image 20260824); latest-stable on macos-14 was a
+    # moving 16.x target. Watch the first run after changing either pin:
+    # the image's Xcode list can change.
+    runs-on: macos-15
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: flutter/loop_analytics/example
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.0.1'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.32.8
+          channel: stable
+          cache: true
+
+      - name: flutter build ios --simulator --no-codesign
+        run: flutter build ios --simulator --no-codesign

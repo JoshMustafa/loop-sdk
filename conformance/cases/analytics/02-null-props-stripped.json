@@ -1,0 +1,25 @@
+{
+  "name": "null prop values are stripped, nested maps included",
+  "steps": [
+    {
+      "op": "track",
+      "name": "A",
+      "props": {"Keep": 1, "Drop": null, "Inner": {"x": null, "y": 2}}
+    },
+    {"op": "flush"}
+  ],
+  "expect": {
+    "requests": [
+      {
+        "$partial": true,
+        "events": [
+          {
+            "$partial": true,
+            "name": "A",
+            "props": {"Keep": 1, "Inner": {"y": 2}}
+          }
+        ]
+      }
+    ]
+  }
+}

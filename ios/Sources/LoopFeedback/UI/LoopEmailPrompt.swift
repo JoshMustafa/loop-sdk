@@ -1,0 +1,147 @@
+import Foundation
+import LoopCore
+#if os(iOS)
+import SwiftUI
+#endif
+
+/// Optional email capture, shown after a report is filed.
+///
+/// Post-submit on purpose: the report path stays frictionless, and someone who
+/// declines still filed their bug. The copy has to carry a real consent decision
+/// — this is the record that the reporter asked to be emailed — so it says what
+/// will be sent and nothing more.
+///
+/// The type and its validator compile on every platform; only the SwiftUI view
+/// is iOS-only. `swift test` builds for macOS, so an `#if os(iOS)` wrapped around
+/// the whole type would put `isPlausible` out of reach of the one test that
+/// covers it.
+struct LoopEmailPrompt {
+    #if os(iOS)
+    let onSubmit: (String) async -> Bool
+
+    @State private var email = ""
+    @State private var phase: Phase = .asking
+    @Environment(\.colorScheme) private var scheme
+    #endif
+
+    /// Named `Phase`, not `State`: a nested `State` shadows SwiftUI's property
+    /// wrapper inside this type, and `@State` then fails to resolve as an attribute.
+    enum Phase { case asking, sending, sent, failed }
+
+    /// Catches typos before a pointless round-trip. Deliberately loose: strict
+    /// address validation by regex is a known trap, and the double opt-in is what
+    /// actually proves an address is real.
+    static func isPlausible(_ raw: String) -> Bool {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.contains(" "), value.count >= 5 else { return false }
+        let parts = value.split(separator: "@", omittingEmptySubsequences: false)
+        guard parts.count == 2, !parts[0].isEmpty else { return false }
+        return parts[1].contains(".") && !parts[1].hasPrefix(".") && !parts[1].hasSuffix(".")
+    }
+
+    /// Builds the `onSubmit` handler to hand `LoopSubmittedView`, **or nil** when
+    /// this project does not collect email — in which case no prompt is shown.
+    ///
+    /// The gate is the whole contract. `collect_email` defaults to false so that
+    /// a routine SDK bump can never start collecting PII: the decision ships
+    /// with the developer's project settings, not with a version number. Nil for
+    /// `project == nil` too — metadata that has not loaded, or whose fetch
+    /// failed, is not permission to ask someone for their address.
+    ///
+    /// Gating client-side is not belt-and-braces over a backend check. The
+    /// backend deliberately answers 202 for an opted-out project while storing
+    /// nothing and sending nothing, so a caller holding a key extracted from an
+    /// app binary cannot enumerate which projects collect email. An ungated
+    /// prompt reads that 202 as success and tells the reporter "Check your inbox
+    /// to confirm." about mail that is never coming.
+    ///
+    /// Defined once here rather than inlined at each construction site: there
+    /// are two of them (`LoopFeedbackView` and `LoopComposerView`), and this is
+    /// the type that defines the closure's contract.
+    ///
+    /// Every error becomes `false`. The report is already filed and safe by the
+    /// time this runs, so a failed capture must never surface as a failed
+    /// report — the prompt just offers to try again.
+    static func handler(client: FeedbackClient, project: LoopProject?) -> ((String) async -> Bool)? {
+        guard project?.collectEmail == true else { return nil }
+
+        return { email in
+            do {
+                try await client.submitContact(email: email)
+                return true
+            } catch {
+                return false
+            }
+        }
+    }
+}
+
+#if os(iOS)
+extension LoopEmailPrompt: View {
+    private var dark: Bool { scheme == .dark }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if phase == .sent {
+                Text("Check your inbox to confirm.", bundle: .loopFeedback)
+                    .font(LoopFont.sf(14))
+                    .foregroundStyle(LoopColors.textSecondary(dark: dark))
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("Want a reply by email?", bundle: .loopFeedback)
+                    .font(LoopFont.sf(15, .semibold))
+                    .foregroundStyle(LoopColors.text(dark: dark))
+
+                TextField(String(localized: "your@email.com", bundle: .loopFeedback), text: $email)
+                    .textContentType(.emailAddress)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(LoopFont.sf(16))
+                    .foregroundStyle(LoopColors.text(dark: dark))
+                    .padding(.horizontal, 14)
+                    .frame(height: 52)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(LoopColors.separator(dark: dark), lineWidth: 1)
+                    )
+
+                Button(action: send) {
+                    Text(phase == .sending ? String(localized: "Sending…", bundle: .loopFeedback)
+                                           : String(localized: "Email me the reply", bundle: .loopFeedback))
+                        .font(LoopFont.sf(16, .bold))
+                        .foregroundStyle(LoopColors.onInk(dark: dark))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(LoopColors.ink(dark: dark), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(!Self.isPlausible(email) || phase == .sending)
+                .opacity(Self.isPlausible(email) && phase != .sending ? 1 : 0.5)
+
+                // The consent record. It must say what will be sent, and it must
+                // survive translation into all 16 locales.
+                Text("Only used to tell you when the developer replies. Unsubscribe any time.", bundle: .loopFeedback)
+                    .font(LoopFont.sf(12))
+                    .foregroundStyle(LoopColors.textSecondary(dark: dark))
+                    .multilineTextAlignment(.center)
+
+                if phase == .failed {
+                    Text("That didn't send. You can try again.", bundle: .loopFeedback)
+                        .font(LoopFont.sf(12))
+                        .foregroundStyle(LoopColors.textSecondary(dark: dark))
+                }
+            }
+        }
+        .frame(maxWidth: 320)
+    }
+
+    private func send() {
+        phase = .sending
+        Task {
+            let ok = await onSubmit(email.trimmingCharacters(in: .whitespacesAndNewlines))
+            phase = ok ? .sent : .failed
+        }
+    }
+}
+#endif

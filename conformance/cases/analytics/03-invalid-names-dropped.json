@@ -1,0 +1,21 @@
+{
+  "name": "empty, blank and over-long event names are dropped",
+  "steps": [
+    {"op": "track", "name": ""},
+    {"op": "track", "name": "   "},
+    {
+      "op": "track",
+      "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {"op": "track", "name": "Purchase Completed"},
+    {"op": "flush"}
+  ],
+  "expect": {
+    "requests": [
+      {
+        "$partial": true,
+        "events": [{"$partial": true, "name": "Purchase Completed"}]
+      }
+    ]
+  }
+}

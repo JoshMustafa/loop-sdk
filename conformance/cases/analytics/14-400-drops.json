@@ -1,0 +1,8 @@
+{
+  "name": "400 drops the batch",
+  "steps": [{"op": "respond", "status": 400}, {"op": "track", "name": "E1"}, {"op": "flush"}],
+  "expect": {
+    "requests": [{"$partial": true, "events": [{"$partial": true, "name": "E1"}]}],
+    "queueLength": 0
+  }
+}

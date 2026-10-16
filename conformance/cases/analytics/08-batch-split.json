@@ -1,0 +1,31 @@
+{
+  "name": "a flush splits the queue into maxBatchSize batches",
+  "options": {"maxBatchSize": 2},
+  "steps": [
+    {"op": "track", "name": "E1"},
+    {"op": "track", "name": "E2"},
+    {"op": "track", "name": "E3"},
+    {"op": "track", "name": "E4"},
+    {"op": "track", "name": "E5"},
+    {"op": "flush"}
+  ],
+  "expect": {
+    "requests": [
+      {
+        "$partial": true,
+        "events": [
+          {"$partial": true, "name": "E1"},
+          {"$partial": true, "name": "E2"}
+        ]
+      },
+      {
+        "$partial": true,
+        "events": [
+          {"$partial": true, "name": "E3"},
+          {"$partial": true, "name": "E4"}
+        ]
+      },
+      {"$partial": true, "events": [{"$partial": true, "name": "E5"}]}
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "user id and merged user properties are snapshotted per event",
+  "steps": [
+    {"op": "setUserId", "userId": "u1"},
+    {"op": "setUserProperties", "props": {"Plan": "annual", "X": 1}},
+    {"op": "setUserProperties", "props": {"X": null, "Y": "y"}},
+    {"op": "track", "name": "A"},
+    {"op": "setUserId", "userId": null},
+    {"op": "track", "name": "B"},
+    {"op": "flush"}
+  ],
+  "expect": {
+    "requests": [
+      {
+        "$partial": true,
+        "events": [
+          {
+            "$partial": true,
+            "name": "A",
+            "userId": "u1",
+            "userProps": {"Plan": "annual", "Y": "y"}
+          },
+          {
+            "$partial": true,
+            "name": "B",
+            "userId": null,
+            "userProps": {"Plan": "annual", "Y": "y"}
+          }
+        ]
+      }
+    ]
+  }
+}

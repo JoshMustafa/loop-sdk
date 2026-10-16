@@ -1,0 +1,18 @@
+{
+  "name": "backoff is in memory only: the startup flush sends at once",
+  "steps": [
+    {"op": "respond", "status": 503},
+    {"op": "track", "name": "E1"},
+    {"op": "flush"},
+    {"op": "check", "requests": 1, "queueLength": 1},
+    {"op": "restart"},
+    {"op": "check", "requests": 2}
+  ],
+  "expect": {
+    "requests": [
+      {"$partial": true, "events": [{"$partial": true, "name": "E1"}]},
+      {"$partial": true, "events": {"$sameAs": "requests[0].events"}}
+    ],
+    "queueLength": 0
+  }
+}

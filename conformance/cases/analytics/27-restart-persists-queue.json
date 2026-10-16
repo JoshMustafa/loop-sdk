@@ -1,0 +1,16 @@
+{
+  "name": "queued events survive a restart and upload at startup",
+  "options": {"flushQueueSize": 100},
+  "steps": [{"op": "track", "name": "A"}, {"op": "track", "name": "B"}, {"op": "restart"}],
+  "expect": {
+    "requests": [
+      {
+        "$partial": true,
+        "events": [
+          {"$partial": true, "name": "A"},
+          {"$partial": true, "name": "B"}
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "an event over 32 KB is dropped; long values are never truncated",
+  "steps": [
+    {"op": "track", "name": "Big", "fill": {"key": "S", "count": 33000}},
+    {"op": "track", "name": "Ok", "fill": {"key": "S", "count": 5000}},
+    {"op": "flush"}
+  ],
+  "expect": {
+    "requests": [
+      {
+        "$partial": true,
+        "events": [
+          {
+            "$partial": true,
+            "name": "Ok",
+            "props": {"S": {"$stringLength": 5000}}
+          }
+        ]
+      }
+    ]
+  }
+}

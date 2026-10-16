@@ -2,195 +2,373 @@
 
 <img src="./loop-mark.svg" alt="Loop" width="96" height="96" />
 
-# LoopSDK · iOS
+# Loop SDK
 
-**Drop-in bug + feature reporter for iOS apps.**
+**Bug & feature reporting, diagnostics and product analytics for mobile apps.**
 
-Fully native SwiftUI (no WebView), survives offline, sends nothing personal, and adopts iOS 26 Liquid Glass automatically when the device supports it. Three lines of integration in your host app.
+Native SwiftUI on iOS (no WebView), survives offline, anonymous by default. Configure once, then pick the modules you need.
 
 </div>
 
 ---
 
-## What this repo is
+## Modules
 
-The **iOS SDK** for Loop — a Swift Package the host app embeds to give end-users a built-in "Report a bug or request a feature" surface. Submissions land in the [Loop backend](https://github.com/JoshMustafa/loop_backend); the developer triages them on the [Loop dashboard](https://github.com/JoshMustafa/loop-frontend).
+| Module | What it does | iOS | Android | Flutter |
+|---|---|---|---|---|
+| **LoopCore** | API key, ids, networking, device info. Every module depends on it. | ✅ | ✅ | (inside each plugin) |
+| **LoopFeedback** | Bug & feature reporter UI: lists, votes, replies, new reports, optional email | ✅ | later | later |
+| **LoopDiagnostics** | Breadcrumbs and captured problems | ✅ | later | later |
+| **LoopAnalytics** | Events, user id, user properties, sessions | ✅ | ✅ | ✅ |
 
-It is one of three repos that make up Loop:
-
-| Repo | What it does |
-|---|---|
-| [`loop-frontend`](https://github.com/JoshMustafa/loop-frontend) | Nuxt 4 dashboard the dev uses to triage bugs / features |
-| [`loop_backend`](https://github.com/JoshMustafa/loop_backend) | Phoenix/Elixir JSON API + Postgres |
-| **loop-sdk-ios** (this one) | Swift Package the host app drops in for in-app reporting |
-
-## At a glance
-
-- **Min iOS:** 16.0 (Liquid Glass styling auto-applies on iOS 26+)
-- **Swift tools:** 5.9+
-- **Distribution:** Swift Package Manager
-- **Dependencies:** none — Foundation, SwiftUI, UIKit, Security, Network only.
+Modules never depend on each other, so an app that only wants feedback doesn't ship analytics, and vice versa.
 
 ## Install
 
-In Xcode: *File → Add Package Dependencies…* and paste the repo URL, or
-add to your `Package.swift`:
+Available from release `2.0.0` (the first release with the module split).
 
-```swift
-.package(url: "https://github.com/JoshMustafa/loop-sdk-ios.git", from: "0.1.0"),
+**Swift Package Manager.** Add `https://github.com/JoshMustafa/loop-sdk` (from `2.0.0`) and tick the products you need (`LoopCore` plus any of `LoopFeedback`, `LoopDiagnostics` and `LoopAnalytics`).
+
+**CocoaPods.** Installed straight from GitHub. Add the modules you use, plus `LoopCore`:
+
+```ruby
+pod 'LoopCore',        :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => '2.0.0'
+pod 'LoopFeedback',    :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => '2.0.0'
+pod 'LoopDiagnostics', :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => '2.0.0'
+pod 'LoopAnalytics',   :git => 'https://github.com/JoshMustafa/loop-sdk.git', :tag => '2.0.0'
 ```
 
-Then add `"LoopSDK"` to your target's `dependencies`.
+Requires iOS 16+.
 
-## Use it
+**Android (Gradle, via JitPack).** `loop-core` and `loop-analytics` are available on Android. Add JitPack to your repositories (in `settings.gradle.kts`):
 
-```swift
-import LoopSDK
-
-@main
-struct YourApp: App {
-    init() {
-        // That's the whole config. The backend URL is baked into the SDK.
-        LoopSDK.start(apiKey: "loop_pk_yourapp_…")
-    }
-    // ...
-}
-
-// Anywhere in your settings:
-struct SettingsScreen: View {
-    @State private var presentingLoop = false
-
-    var body: some View {
-        Button("Report a bug or request a feature") {
-            presentingLoop = true
-        }
-        .fullScreenCover(isPresented: $presentingLoop) {
-            LoopReporterView()
-        }
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
     }
 }
 ```
 
-That's it. Three lines of integration:
+Then add the dependency (it brings in `loop-core`):
 
-1. `LoopSDK.start(apiKey:)` once at launch.
-2. `LoopReporterView()` in a `.fullScreenCover` (or `.sheet`, your call).
-3. (Optional) `LoopSDK.presentReporter(from:)` if you're driving from UIKit.
+```kotlin
+implementation("com.github.JoshMustafa.loop-sdk:loop-analytics:2.0.0")
+```
+
+Requires minSdk 21. `kotlinx-coroutines-android` is an `api` dependency (the async `flushAsync()`/`resetAsync()` return a coroutines `Job`); `androidx.lifecycle:lifecycle-process` is pulled in for foreground/background detection.
+
+**Flutter.** Add the plugin as a git dependency in `pubspec.yaml`:
+
+```yaml
+dependencies:
+  loop_analytics:
+    git:
+      url: https://github.com/JoshMustafa/loop-sdk.git
+      path: flutter/loop_analytics
+      ref: 2.0.0
+```
+
+No `pod` or JitPack lines are needed; only the iOS 16 platform setting. The plugin compiles the native sources from the checkout. Requires Dart `>=3.4.0`, Flutter `>=3.22.0`, iOS 16+, Android `compileSdk` 34+ and minSdk 21, and Kotlin 1.9 or newer in the host app (coroutines 1.9 needs it).
+
+iOS setup: a new Flutter app targets a lower iOS version, so `pod install` fails with "required a higher minimum deployment target" until you raise it in two places:
+
+1. In `ios/Podfile`, set `platform :ios, '16.0'` (Flutter's template has this line commented out, and CocoaPods then assumes iOS 12).
+2. In Xcode, set the Runner target's General → Minimum Deployments to 16.0 (`IPHONEOS_DEPLOYMENT_TARGET = 16.0`). Otherwise the app links an iOS 16 framework into a lower-target app.
+
+## Quick start
+
+```swift
+import LoopCore
+import LoopFeedback
+import LoopDiagnostics
+
+// Once, at launch
+Loop.configure(apiKey: "loop_pk_…")
+
+// SwiftUI: show the reporter in a sheet
+.sheet(isPresented: $showingFeedback) { LoopFeedbackView() }
+
+// UIKit
+LoopFeedback.present(from: viewController)
+
+// Open straight on the compose form
+LoopComposerView(kind: .bug)
+
+// Diagnostics
+LoopDiagnostics.breadcrumb("Tapped sync")
+LoopDiagnostics.capture("sync_failed", severity: .error, context: ["code": "504"])
+```
+
+`LoopDiagnostics` calls made before `Loop.configure` are safe: breadcrumbs are kept and captures are dropped. Presenting `LoopFeedbackView` before `Loop.configure` stops with a clear error, so a missing key shows up during integration rather than as silent failures.
+
+### Analytics
+
+```swift
+import LoopCore
+import LoopAnalytics
+
+Loop.configure(apiKey: "loop_pk_…")
+LoopAnalytics.start()                                   // optional; defaults are used otherwise
+LoopAnalytics.track("Item Viewed", ["Index": 1])
+LoopAnalytics.setUserId("12345")                        // nil when signed out
+LoopAnalytics.setUserProperties(["Plan": "annual"])    // nil value removes a property
+LoopAnalytics.setPurchaserId(revenueCatAppUserID)
+```
+
+The fire-and-forget calls return at once; `flush()` and `reset()` are async. All calls run in the order they were made and never throw into the app. Also available: `await LoopAnalytics.flush()`, `await LoopAnalytics.reset()` (new device id, no user id, user properties or purchaser id, new session), `LoopAnalytics.setOptOut(_:)`, and the read-only `LoopAnalytics.deviceId` and `LoopAnalytics.sessionId`.
+
+`LoopAnalyticsOptions` (all optional):
+
+| Option | Default | Meaning |
+|---|---|---|
+| `flushQueueSize` | `30` | Upload as soon as this many events are queued |
+| `flushInterval` | `30` s | Upload queued events at least this often |
+| `minTimeBetweenSessions` | `300` s | Idle time after which a new session starts |
+| `maxQueueSize` | `1000` | Most events kept on disk; when full, the oldest 20 are dropped |
+| `maxBatchSize` | `100` | Most events sent in one request |
+| `legacyDeviceId` | `nil` | A device id to adopt on first run, so anonymous users from a previous analytics SDK carry over |
+
+Pass only the options you want to change:
+
+```swift
+LoopAnalytics.start(options: .init(legacyDeviceId: previousSdkDeviceId))
+```
+
+When migrating from another analytics SDK, passing its device id as `legacyDeviceId` keeps your existing anonymous users: on first run the device keeps the id it already had instead of counting as a new one.
+
+How it behaves:
+
+- Events are queued on disk and uploaded in gzip batches of up to 100. An upload happens at 30 queued events, every 30 s, when the app goes to the background or returns to the foreground, at startup, and when opting back in.
+- A full queue (1000) drops the oldest 20 events.
+- A `401`/`403` keeps the events and retries hourly.
+- A session ends after 5 minutes idle; there is no timeout while the app is in the foreground.
+- `setOptOut(true)` drops new events and stops uploads; events already queued are kept and uploaded after opting back in.
+- Calls made before `Loop.configure` are dropped. Options passed to `start` before then are kept and applied once configured. Calling `Loop.configure` a second time logs a warning, and analytics keeps the key it started with.
+- Safe to link into app extensions. Inside an extension the app is treated as always in the foreground and no background task is used. An app extension that links LoopAnalytics reports as a separate device with its own queue unless the app shares storage through an app group; app groups are not supported in 2.0.0.
 
 ### Tagging reports with the user's subscription tier
 
-Every report can carry an optional `user.tier` string that the dev
-dashboard renders as a coloured pill — handy for prioritising paying
-customers' bugs. The dashboard's pill is `Paid` / `Trial` / `Free` (with
-specific colours) for the canonical values, or whatever string you pass
-for custom tiers like `pro`, `founder`, `team`.
+Every report and diagnostic can carry an optional `user.tier` string that the dashboard shows as a pill (`Paid` / `Trial` / `Free`, or any custom value such as `pro`).
 
-**If your app uses RevenueCat, you get this for free.** The single-line
-`LoopSDK.start(apiKey:)` above already wires it up — the SDK auto-
-detects RevenueCat via the Objective-C runtime (no build-time
-dependency on RevenueCat, so apps that don't use it pay nothing) and
-emits `"paid"` whenever the user has any active entitlement, `"free"`
-otherwise.
+**If your app uses RevenueCat, this works with no code.** `Loop.configure(apiKey:)` auto-detects RevenueCat through the Objective-C runtime (no build-time dependency) and sends `"paid"` when the user has an active entitlement, `"free"` when RevenueCat reports none, and nothing while it cannot tell yet.
 
-**To override** (custom value space, StoreKit, your own backend), pass
-a closure:
+To supply your own value, or turn it off:
 
 ```swift
-LoopSDK.start(apiKey: "loop_pk_yourapp_…") {
-    // Any synchronous source of truth works.
+Loop.configure(apiKey: "loop_pk_…", options: LoopOptions(tierProvider: {
     Purchases.shared.cachedCustomerInfo?
         .entitlements.active.keys.contains("pro") == true ? "pro" : "free"
+}))
+
+Loop.configure(apiKey: "loop_pk_…", options: LoopOptions(tierProvider: nil))
+```
+
+The provider is read on every send, must be cheap and non-blocking, and an empty value means "unknown". End users never see the tier.
+
+## Android quick start
+
+```kotlin
+import android.app.Application
+import io.loop.analytics.LoopAnalytics
+import io.loop.analytics.LoopAnalyticsOptions
+import io.loop.core.Loop
+
+class App : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        Loop.configure(this, "loop_pk_…")
+        // Optional: without it, defaults are used. Only the first call counts.
+        // Options take times in milliseconds on Android.
+        LoopAnalytics.start(LoopAnalyticsOptions(flushIntervalMillis = 60_000))
+    }
+}
+
+// Anywhere in the app, e.g. in an Activity
+fun onItemOpened(index: Int, userId: String?, revenueCatAppUserId: String?) {
+    LoopAnalytics.track("Item Viewed", mapOf("Index" to index))
+    LoopAnalytics.setUserId(userId)                                // null when signed out
+    LoopAnalytics.setUserProperties(mapOf("Plan" to "annual"))     // null value removes a property
+    LoopAnalytics.setPurchaserId(revenueCatAppUserId)
 }
 ```
 
-**To disable tier reporting entirely**, pass `nil`:
+From Java: `LoopAnalytics.flushAsync(null);` (the `Runnable` callback, when given, runs on the main thread once done).
 
-```swift
-LoopSDK.start(apiKey: "loop_pk_yourapp_…", tierProvider: nil)
+The fire-and-forget calls behave as on iOS. `flush()` and `reset()` are `suspend` functions; Java callers use `flushAsync(Runnable?)` and `resetAsync(Runnable?)`. Also available: `setOptOut(Boolean)`, and the read-only `deviceId` and `sessionId`. `LoopAnalyticsOptions` is a data class with the same defaults as iOS, except that times are in milliseconds: `flushIntervalMillis` (30 000) and `minTimeBetweenSessionsMillis` (300 000).
+
+Android notes:
+
+- The queue lives in `noBackupFilesDir`, so it is never backed up or restored to another device.
+- Foreground and background are detected with `ProcessLifecycleOwner`. If your app removes androidx.startup's `InitializationProvider`, uploads on foreground and background stop and a warning is logged; uploads on the timer and on queue size still happen.
+- The 30 s upload timer pauses while the app is in the background.
+- A sample app lives in `android/sample/` (`./gradlew :sample:assembleDebug` from `android/`, with your key in place of `loop_pk_REPLACE_ME`). It is not published.
+
+## Flutter quick start
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:loop_analytics/loop_analytics.dart';
+
+// Placeholders: replace with your own values.
+const String? previousSdkDeviceId = null; // device id from a previous analytics SDK, if any
+const String? revenueCatAppUserId = null; // your purchases SDK's app user id, if any
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await LoopAnalytics.init(
+    apiKey: 'loop_pk_…',
+    options: const LoopOptions(legacyDeviceId: previousSdkDeviceId), // optional
+  );
+
+  final loop = LoopAnalytics.instance!;
+  loop.track('Item Viewed', {'Index': 1});
+  loop.setUserId('12345');                       // null when signed out
+  loop.setUserProperties({'Plan': 'annual'});    // a null value removes a property
+  loop.setPurchaserId(revenueCatAppUserId);
+  final deviceId = await loop.deviceId();        // async in the plugin
+  debugPrint('device id ready: ${deviceId != null}');
+
+  runApp(const MaterialApp(home: Scaffold()));
+}
 ```
 
-Notes:
+The plugin forwards every call to the native SDK, so it behaves as the native SDKs, which pass the shared conformance cases. Calls made before `init` completes are buffered (up to 1000, oldest dropped) and sent in order. `flush()`, `reset()`, `deviceId()` and `sessionId()` are async.
 
-- The SDK reads the closure (or the auto-detector) **on every submit**,
-  so a downgrade or refund picks up automatically — no setter to
-  remember to call.
-- The read must be **cheap and non-blocking** (a cached property, not a
-  network round-trip).
-- Returning `nil`, an empty string, or whitespace is treated as
-  "tier unknown" — the report is filed with no tier attached.
-- **End-users never see the tier** in the report sheet. It's
-  dev-only metadata, only visible on the dashboard.
+Changes from the pure-Dart SDK: `deviceId()` and `sessionId()` are now async (they were getters); the `userId` and `isOptedOut` getters and `dispose()` are removed; and `LoopAnalytics.instance` is now set as soon as `init` is called, not when it completes. See [flutter/loop_analytics/README.md](./flutter/loop_analytics/README.md) for options and notes.
+
+## Migrating from `LoopSDK`
+
+The package was renamed from `LoopSDK` to `Loop` and split into modules.
+
+| Before | Now |
+|---|---|
+| package `LoopSDK`, `import LoopSDK` | package `Loop`; `import LoopCore` + `LoopFeedback`, `LoopDiagnostics` and/or `LoopAnalytics` |
+| `LoopSDK.start(apiKey:)` / `start(configuration:)` | `Loop.configure(apiKey:options:)` |
+| `LoopConfiguration` | `LoopOptions` |
+| `apiBase:` | `LoopOptions(serverUrl:)` (default `https://loop-analytics-api.fly.dev`) |
+| `LoopSDK.presentReporter(from:)` / `LoopReporterView()` | `LoopFeedback.present(from:)` / `LoopFeedbackView()` |
+| `LoopSDK.currentReporterId()` | `Loop.reporterId` |
+| `LoopSDK.breadcrumb` / `captureDiagnostic` | `LoopDiagnostics.breadcrumb` / `capture` |
+| `LoopSDK.track` / `identify` / `resetIdentity` | `LoopAnalytics.track` / `setUserId` / `reset` |
+| `LoopSDK.defineFunnel` | Removed. Funnels are built in the Loop Analytics dashboard. |
+
+Nothing is lost on upgrade: the reporter id (Keychain) and any diagnostics still waiting to send are picked up by the new modules.
 
 ## What the user sees
 
-- A list of every bug and feature filed against the project, segmented Bugs / Features.
-- Vote up/down on each item. Idempotent — voting twice doesn't double-count.
-- A "+" button to file a new report. The user picks Bug or Feature, types a title and a few sentences, hits **Send →**.
-- Live character-count hints under both fields so they know when the Send button will enable.
-- Everything else (device, OS, app version, locale, network type, session id) is captured automatically and attached to the submission.
+- Every bug and feature filed against the project, split into Bugs / Features.
+- Up/down votes on each item (voting twice doesn't double-count) and reply threads.
+- A "+" button to file a new report: pick Bug or Feature, add a title and a few sentences, send.
+- If the project has it switched on, an optional prompt after sending to leave an email for follow-up.
+- Device, OS, app version, locale, network type and a per-launch session id are attached automatically.
 
-## What the user *doesn't* see
+## What the user doesn't see
 
-- No login. No Apple ID. No name, no email, no PII.
-- Each device gets a stable anonymous id like `r_8af3bc9e1234`, generated on first launch and pinned in Keychain. The same id is sent on every call so the dev can recognise repeat reporters in the dashboard without knowing who they are.
+- No login and no Apple ID.
+- Each device gets a stable anonymous id like `r_8af3bc9e1234`, created on first use and kept in the Keychain (not synced to iCloud), so you can recognise repeat reporters without knowing who they are.
 
 ## Privacy disclosure (paste into your privacy policy)
 
-> This app uses Loop, a self-hosted bug and feature reporting tool, to let
-> you report issues. When you submit a report, Loop attaches your device
-> model, OS version, app version, locale, network type, and a per-launch
-> session id. Loop generates a random per-device id stored in your
-> device's Keychain so the developer can recognise repeat reports from
-> the same device. **No personal information is collected.**
+> This app uses Loop to let you report bugs and request features. When you
+> submit a report, Loop attaches your device model, OS version, app version,
+> locale, network type and a per-launch session id, plus a random per-device
+> id stored in your device's Keychain so the developer can recognise repeat
+> reports from the same device. If you choose to leave an email address
+> after sending a report, it is stored with that id so the developer can
+> reply. Loop does not track you across apps or websites.
+
+If you use **LoopAnalytics**, add:
+
+> This app uses Loop to measure how the app is used. Loop records the
+> actions you take in the app (product interaction) with a random per-device
+> id, and, if the app supplies them, the app's own user id and user
+> properties. This data is linked to that user id, used only for analytics,
+> and not used to track you across apps or websites.
 
 ## App Store review
 
-LoopSDK ships its own `PrivacyInfo.xcprivacy` declaring no tracking, no
-data collection beyond what the user explicitly types, and the one
-`UserDefaults` reason code (`CA92.1`) covering the Apple-required
-"app's own functionality" use case. You don't need to update your own
-privacy nutrition labels for the SDK.
+Each module ships its own `PrivacyInfo.xcprivacy`:
 
-There is no `ATTrackingManager` prompt anywhere. Loop never tracks across
-apps or websites.
+- **LoopCore**: no tracking, no collected data types, no required-reason APIs.
+- **LoopFeedback**: declares the optional email address (linked, not tracking, app functionality).
+- **LoopDiagnostics**: no manifest entries beyond Core's.
+- **LoopAnalytics**: declares device id, user id, product interaction and other data types (the user properties your app supplies), all linked, not tracking, purpose Analytics; plus `UserDefaults` with reason `CA92.1`.
 
-## Architecture
+There is no `ATTrackingManager` prompt anywhere.
+
+## Endpoints
+
+Every request carries `Authorization: Bearer loop_pk_…` and `X-Loop-Reporter-Id: r_…`.
+
+| Module | Method | Path |
+|---|---|---|
+| Feedback | GET | `/api/ingest/project` |
+| Feedback | GET | `/api/ingest/bugs?limit=&cursor=` |
+| Feedback | GET | `/api/ingest/features?limit=&cursor=` |
+| Feedback | GET | `/api/ingest/items/:id` |
+| Feedback | POST | `/api/ingest/items/:id/vote` |
+| Feedback | POST | `/api/ingest/items/:id/replies` |
+| Feedback | POST | `/api/ingest/submissions` |
+| Feedback | POST | `/api/ingest/contact` |
+| Diagnostics | POST | `/api/ingest/events` |
+| Analytics | POST | `/api/ingest/analytics/batch` |
+
+Analytics bodies are gzip-compressed (`Content-Encoding: gzip`).
+
+## Repository layout
 
 ```
-LoopSDK
-├── LoopClient      — actor, URLSession + async/await
-├── ReporterStore   — Keychain-backed r_xxx… id
-├── DeviceMeta      — model, OS, app, locale, network, session
-└── UI/             — SwiftUI views, Liquid Glass on iOS 26
-    ├── LoopReporterView    (public)
-    ├── LoopComposeSheet
-    ├── LoopSubmittedView
-    ├── LoopItemRow
-    └── LoopVoteControl
+Package.swift          SwiftPM manifest (sources under ios/)
+*.podspec              one podspec per module
+conformance/           shared, platform-neutral behaviour cases (JSON)
+ios/Sources/           LoopCore, LoopFeedback, LoopDiagnostics, LoopAnalytics
+ios/Tests/             one test target per module + shared LoopTestSupport
+ios/Examples/          minimal SwiftUI host app (see its README)
+android/               loop-core, loop-analytics (Gradle) and a sample app
+flutter/loop_analytics Flutter plugin over the native modules, with an example app
 ```
 
-Backend contract (`/api/ingest/*`):
-
-| Method | Path | Headers | Purpose |
-|---|---|---|---|
-| GET  | `/api/ingest/project` | Bearer + `X-Loop-Reporter-Id` | Project metadata for branding |
-| GET  | `/api/ingest/bugs?cursor=&limit=` | same | Paginated bug list (archived items are excluded server-side) |
-| GET  | `/api/ingest/features?cursor=&limit=` | same | Paginated feature list |
-| POST | `/api/ingest/items/:LP-####/vote` | same; body `{dir}` | Cast / clear vote |
-| POST | `/api/ingest/submissions` | Bearer | File a new report |
-
-## Local dev against the Phoenix backend
-
-See [`Examples/README.md`](./Examples/README.md) for a step-by-step walkthrough that runs the example host app against `http://localhost:4000` (or your Mac's LAN IP from an iPhone).
+Every platform shares one conformance suite so they all behave the same.
 
 ## Tests
 
-```sh
-swift test    # cross-platform pieces (Client, ReporterStore, DeviceMeta)
-xcodebuild -scheme LoopSDK -destination 'generic/platform=iOS Simulator' build
+```bash
+swift test
+xcodebuild -scheme Loop-Package -destination 'generic/platform=iOS Simulator' build
 ```
 
-UI is exercised manually via the example app; full UI test automation is out of scope for v1.
+The UI is tested by hand with the example app.
+
+`conformance/` holds the shared analytics cases that every platform's SDK must pass (see [conformance/README.md](./conformance/README.md)). The iOS runner:
+
+```bash
+swift test --filter ConformanceTests
+```
+
+The Android runner (from `android/`):
+
+```bash
+./gradlew :loop-analytics:testDebugUnitTest --tests '*ConformanceTest*'
+```
+
+The Flutter plugin (from `flutter/loop_analytics`):
+
+```bash
+cd flutter/loop_analytics && flutter test
+```
+
+Its integration tests run on a device or simulator with `cd example && flutter test integration_test -d <device>`. CI does not run them.
+
+## CI
+
+Three GitHub Actions workflows in `.github/workflows/`:
+
+- `ios.yml`: `swift test`, the iOS build and `pod lib lint` for each podspec.
+- `android.yml`: Gradle unit tests (conformance included), the sample app build, lint and a JitPack build simulation.
+- `flutter.yml`: `flutter analyze`, `flutter test`, the native-source link and license checks, and debug Android and iOS simulator builds of the example app.
 
 ## License
 

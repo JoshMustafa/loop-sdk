@@ -1,0 +1,1 @@
+../../../../../../ios/Sources/LoopAnalytics/Event.swift

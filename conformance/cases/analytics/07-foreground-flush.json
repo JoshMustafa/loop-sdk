@@ -1,0 +1,10 @@
+{
+  "name": "coming to the foreground uploads queued events",
+  "steps": [
+    {"op": "lifecycle", "state": "background"},
+    {"op": "track", "name": "E1"},
+    {"op": "check", "requests": 0},
+    {"op": "lifecycle", "state": "foreground"}
+  ],
+  "expect": {"requests": [{"$partial": true, "events": [{"$partial": true, "name": "E1"}]}]}
+}

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSPrivacyTracking</key>
+  <false/>
+  <key>NSPrivacyTrackingDomains</key>
+  <array/>
+  <key>NSPrivacyCollectedDataTypes</key>
+  <array>
+    <dict>
+      <!-- Linked: the address is stored against the reporter id, which is what
+           linking means. NOT tracking: it is never used for cross-app or
+           cross-developer identification, and NSPrivacyTracking stays false.
+
+           Apple's optional-feedback-form exemption does NOT apply here. That
+           exemption requires the user's account name to be displayed, and Loop
+           reporters are anonymous by design. -->
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeEmailAddress</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+      </array>
+    </dict>
+  </array>
+  <key>NSPrivacyAccessedAPITypes</key>
+  <array/>
+</dict>
+</plist>

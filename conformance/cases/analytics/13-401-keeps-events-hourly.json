@@ -1,0 +1,14 @@
+{
+  "name": "401 keeps events and retries after one hour",
+  "steps": [
+    {"op": "respond", "status": 401},
+    {"op": "track", "name": "E1"},
+    {"op": "flush"},
+    {"op": "check", "requests": 1, "queueLength": 1},
+    {"op": "advance", "ms": 3599000},
+    {"op": "check", "requests": 1},
+    {"op": "advance", "ms": 1000},
+    {"op": "check", "requests": 2}
+  ],
+  "expect": {"queueLength": 0}
+}

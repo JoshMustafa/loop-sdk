@@ -1,0 +1,43 @@
+{
+  "name": "reset gives a new device id and session and clears user, props and purchaser",
+  "steps": [
+    {"op": "setUserId", "userId": "u1"},
+    {"op": "setUserProperties", "props": {"Plan": "annual"}},
+    {"op": "setPurchaserId", "purchaserId": "p1"},
+    {"op": "track", "name": "A"},
+    {"op": "advance", "ms": 1000},
+    {"op": "reset"},
+    {"op": "track", "name": "B"},
+    {"op": "flush"}
+  ],
+  "expect": {
+    "requests": [
+      {
+        "$partial": true,
+        "context": {"$partial": true, "purchaserId": "p1"},
+        "events": [
+          {
+            "$partial": true,
+            "name": "A",
+            "deviceId": "DEVICE-1R",
+            "userId": "u1"
+          }
+        ]
+      },
+      {
+        "$partial": true,
+        "context": {"$partial": true, "purchaserId": null},
+        "events": [
+          {
+            "$partial": true,
+            "name": "B",
+            "deviceId": "DEVICE-2R",
+            "userId": null,
+            "userProps": {},
+            "sessionId": 1767225601000
+          }
+        ]
+      }
+    ]
+  }
+}
