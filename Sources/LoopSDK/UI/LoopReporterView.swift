@@ -24,6 +24,11 @@ public struct LoopReporterView: View {
     @Environment(\.colorScheme) private var scheme
     private var dark: Bool { scheme == .dark }
 
+    /// Set when the system shows a vertical toolbar (iPhone Duo closed, iOS 27.1+). Close
+    /// and New report then become toolbar items, which the system puts in that bar, instead
+    /// of sitting in the header. See `VerticalBarReader`.
+    @State private var hasVerticalBar = false
+
     public init() {
         let runtime = LoopSDK.runtime()
         _model = StateObject(wrappedValue: runtime.makeReporterModel())
@@ -41,7 +46,10 @@ public struct LoopReporterView: View {
                     content
                 }
             }
-            .navigationBarHidden(true)
+            .background(VerticalBarReader(hasVerticalBar: $hasVerticalBar))
+            .toolbar { sideBarItems }
+            .toolbar(hasVerticalBar ? .visible : .hidden, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .navigationDestination(for: String.self) { itemId in
                 LoopDetailView(model: model, itemId: itemId)
             }
@@ -95,11 +103,13 @@ public struct LoopReporterView: View {
             bundle: .module
         )
         return HStack(alignment: .center) {
-            Button(action: { dismiss() }) {
-                Text("Close", bundle: .module)
-                    .font(LoopFont.sf(15, .regular))
-                    .kerning(-0.2)
-                    .foregroundStyle(LoopColors.textSecondary(dark: dark))
+            if !hasVerticalBar {
+                Button(action: { dismiss() }) {
+                    Text("Close", bundle: .module)
+                        .font(LoopFont.sf(15, .regular))
+                        .kerning(-0.2)
+                        .foregroundStyle(LoopColors.textSecondary(dark: dark))
+                }
             }
 
             Spacer()
@@ -108,22 +118,45 @@ public struct LoopReporterView: View {
 
             Spacer()
 
-            Button(action: {
-                composeRequest = ComposeRequest(kind: kind)
-            }) {
-                ZStack {
-                    Circle().fill(LoopColors.ink(dark: dark))
-                    Image(systemName: "plus")
-                        .font(.system(size: 13, weight: .heavy))
-                        .foregroundStyle(LoopColors.onInk(dark: dark))
+            if !hasVerticalBar {
+                Button(action: newReport) {
+                    ZStack {
+                        Circle().fill(LoopColors.ink(dark: dark))
+                        Image(systemName: "plus")
+                            .font(.system(size: 13, weight: .heavy))
+                            .foregroundStyle(LoopColors.onInk(dark: dark))
+                    }
+                    .frame(width: 34, height: 34)
                 }
-                .frame(width: 34, height: 34)
+                .accessibilityLabel(Text("New report", bundle: .module))
             }
-            .accessibilityLabel(Text("New report", bundle: .module))
         }
         .padding(.horizontal, 20)
         .padding(.top, 4)
         .padding(.bottom, 10)
+    }
+
+    private func newReport() {
+        composeRequest = ComposeRequest(kind: kind)
+    }
+
+    /// The header's Close and New report, as system toolbar items. Only while there is a
+    /// vertical bar: everywhere else the bar is hidden and the header keeps them. Icon and
+    /// title on each, since the system shows the icon in the bar and the title in overflow.
+    @ToolbarContentBuilder
+    private var sideBarItems: some ToolbarContent {
+        if hasVerticalBar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button(action: { dismiss() }) {
+                    Label { Text("Close", bundle: .module) } icon: { Image(systemName: "xmark") }
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: newReport) {
+                    Label { Text("New report", bundle: .module) } icon: { Image(systemName: "plus") }
+                }
+            }
+        }
     }
 
     // MARK: - Title block
@@ -404,6 +437,32 @@ private struct LoopErrorPanel: View {
                 .frame(height: 38)
                 .background(LoopColors.ink(dark: dark), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .padding(.top, 4)
+        }
+    }
+}
+
+/// Reports whether the system is showing a vertical toolbar, from `toolbarVerticalEdge`
+/// (iOS 27.1). A wrapper because the SDK still deploys to iOS 16, where that environment
+/// value does not exist. Must sit inside the navigation stack to read the right value.
+struct VerticalBarReader: View {
+    @Binding var hasVerticalBar: Bool
+
+    var body: some View {
+        if #available(iOS 27.1, *) {
+            Reader(hasVerticalBar: $hasVerticalBar)
+        }
+    }
+
+    @available(iOS 27.1, *)
+    private struct Reader: View {
+        @Environment(\.toolbarVerticalEdge) private var edge
+        @Binding var hasVerticalBar: Bool
+
+        var body: some View {
+            Color.clear
+                .allowsHitTesting(false)
+                .onAppear { hasVerticalBar = edge != nil }
+                .onChange(of: edge) { _, newEdge in hasVerticalBar = newEdge != nil }
         }
     }
 }
